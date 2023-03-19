@@ -7,12 +7,12 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-
-	"github.com/charmbracelet/bubbles/list"
+	"strconv"
 
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
 
+	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/pflag"
@@ -30,11 +30,56 @@ var (
 	cfgPath   string
 )
 
+var (
+
+	// Colors
+	subtle = lipgloss.AdaptiveColor{Light: "#D9DCCF", Dark: "#383838"}
+	body   = lipgloss.AdaptiveColor{Light: "#343433", Dark: "#C1C6B2"}
+
+	// The list pane that displays the files on the left side
+	listPaneWidth  = 60
+	listPaneHeight = 20
+	listPane       = lipgloss.NewStyle().
+			Width(listPaneWidth).
+			Height(listPaneHeight)
+
+	// The pane on the right that displays details about the currently selected file
+	detailsPane = lipgloss.NewStyle().
+			BorderStyle(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#7D56F4")).
+			Foreground(lipgloss.Color("#FAFAFA")).
+		//Background(lipgloss.Color("#7D56F4")).
+		//PaddingTop(2).
+		PaddingLeft(1).
+		PaddingRight(1).
+		Margin(0).
+		//Padding(2).
+		Align(lipgloss.Left).
+		Width(24).
+		Height(20)
+
+	//
+	detailsHeader = lipgloss.NewStyle().
+			Foreground(subtle).
+			MarginRight(2)
+
+	detailsContent = lipgloss.NewStyle().
+			Foreground(body).
+			PaddingBottom(1)
+)
+
+type Result struct {
+	items    []Item
+	list     list.Model
+	selected int
+}
+
 type Item struct {
 	config *api.Config
 	info   os.FileInfo
 	title  string
 	desc   string
+	raw    []byte
 }
 
 func (i Item) Title() string {
@@ -45,11 +90,6 @@ func (i Item) Description() string {
 }
 func (i Item) FilterValue() string {
 	return i.title
-}
-
-type Result struct {
-	items []Item
-	list  list.Model
 }
 
 func (r *Result) Add(i Item) {
@@ -71,12 +111,19 @@ func (r *Result) Init() tea.Cmd {
 func (r *Result) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if msg.String() == "ctrl+c" {
+		switch keypress := msg.String(); keypress {
+		case "ctrl+c":
 			return r, tea.Quit
+		case "down":
+			r.selected++
+		case "up":
+			r.selected--
 		}
 	case tea.WindowSizeMsg:
 		h, v := lipgloss.NewStyle().Margin(1, 2).GetFrameSize()
 		r.list.SetSize(msg.Width-h, msg.Height-v)
+		w := msg.Width - listPaneWidth - h
+		detailsPane = detailsPane.Width(w)
 	}
 
 	var cmd tea.Cmd
@@ -85,7 +132,117 @@ func (r *Result) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (r *Result) View() string {
-	return lipgloss.NewStyle().Margin(1, 2).Render(r.list.View())
+
+	//const width = 70
+
+	// vp := viewport.New(0, 20)
+	// vp.Style = lipgloss.NewStyle().
+	// 	BorderStyle(lipgloss.RoundedBorder()).
+	// 	BorderForeground(lipgloss.Color("62")).
+	// 	PaddingRight(2)
+
+	// renderer, _ := glamour.NewTermRenderer(
+	// 	glamour.WithAutoStyle(),
+	// 	//glamour.WithWordWrap(width),
+	// )
+
+	// str, _ := renderer.Render("```yaml\n" + string(r.items[r.selected].raw) + "\n```")
+
+	//vp.SetContent(str)
+
+	curContext := lipgloss.JoinVertical(
+		lipgloss.Top,
+		detailsHeader.Render("Current Context"),
+		detailsContent.Render(r.getCurrentContext()),
+	)
+
+	contextCount := lipgloss.JoinVertical(
+		lipgloss.Left,
+		detailsHeader.Render("Contexts"),
+		detailsContent.Render(r.getContextCount()),
+	)
+	clusterCount := lipgloss.JoinVertical(
+		lipgloss.Left,
+		detailsHeader.Render("Clusters"),
+		detailsContent.Render(r.getClusterCount()),
+	)
+	userCount := lipgloss.JoinVertical(
+		lipgloss.Left,
+		detailsHeader.Render("Users"),
+		detailsContent.Render(r.getUserCount()),
+	)
+
+	counts := lipgloss.JoinHorizontal(
+		lipgloss.Left,
+		contextCount,
+		clusterCount,
+		userCount,
+	)
+
+	modified := lipgloss.JoinVertical(
+		lipgloss.Left,
+		detailsHeader.Render("Last Modified"),
+		detailsContent.Render(r.getLastModified()),
+	)
+
+	sizeBytes := lipgloss.JoinVertical(
+		lipgloss.Left,
+		detailsHeader.Render("Size"),
+		detailsContent.Render(r.getSize()),
+	)
+
+	details := lipgloss.JoinVertical(
+		lipgloss.Top,
+		counts,
+		curContext,
+		modified,
+		sizeBytes,
+	)
+
+	return lipgloss.JoinHorizontal(lipgloss.Top, listPane.Render(r.list.View()), detailsPane.Render(details))
+
+	//return lipgloss.NewStyle().Margin(1, 2).Render()
+}
+
+func (r *Result) getContextCount() string {
+	str := strconv.Itoa(len(r.items[r.selected].config.Contexts))
+	return str
+}
+
+func (r *Result) getClusterCount() string {
+	str := strconv.Itoa(len(r.items[r.selected].config.Clusters))
+	return str
+}
+
+func (r *Result) getUserCount() string {
+	str := strconv.Itoa(len(r.items[r.selected].config.AuthInfos))
+	return str
+}
+
+func (r *Result) getCurrentContext() string {
+	return r.items[r.selected].config.CurrentContext
+}
+
+func (r *Result) getLastModified() string {
+	return r.items[r.selected].info.ModTime().String()
+}
+
+func ByteCountSI(b int64) string {
+	const unit = 1000
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB",
+		float64(b)/float64(div), "kMGTPE"[exp])
+}
+
+func (r *Result) getSize() string {
+	return ByteCountSI(int64(r.items[r.selected].info.Size()))
 }
 
 func init() {
@@ -130,11 +287,17 @@ func main() {
 			if err != nil {
 				return nil
 			}
+			// Read file so that we can reference raw data later
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return nil
+			}
 			i := Item{
 				config: config,
 				info:   info,
 				title:  info.Name(),
 				desc:   fmt.Sprintf("%d contexts", len(config.Contexts)),
+				raw:    b,
 			}
 			res.Add(i)
 		}
@@ -143,7 +306,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	res.list = list.New(res.List(), list.NewDefaultDelegate(), 0, 0)
 	res.list.Title = fmt.Sprintf("%d kubeconfigs in %s", len(res.items), cfgPath)
 
