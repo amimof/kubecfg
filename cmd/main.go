@@ -4,8 +4,8 @@ import (
 	//"flag"
 
 	"fmt"
-	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 
@@ -27,7 +27,6 @@ var (
 	BRANCH string
 	// GOVERSION used to compile. Is set when project is built and should never be set manually
 	GOVERSION string
-	cfgPath   string
 )
 
 var (
@@ -41,28 +40,27 @@ var (
 	listPaneHeight = 20
 	listPane       = lipgloss.NewStyle().
 			Width(listPaneWidth).
-			Height(listPaneHeight)
+			Height(listPaneHeight).
+			PaddingTop(1)
 
 	// The pane on the right that displays details about the currently selected file
 	detailsPane = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("#7D56F4")).
 			Foreground(lipgloss.Color("#FAFAFA")).
-		//Background(lipgloss.Color("#7D56F4")).
-		//PaddingTop(2).
-		PaddingLeft(1).
-		PaddingRight(1).
-		Margin(0).
-		//Padding(2).
-		Align(lipgloss.Left).
-		Width(24).
-		Height(20)
+			PaddingLeft(1).
+			PaddingRight(1).
+			Margin(0).
+			Align(lipgloss.Left).
+			Width(24).
+			Height(20)
 
-	//
+	// This is a header usually display inside of the details pane
 	detailsHeader = lipgloss.NewStyle().
 			Foreground(subtle).
 			MarginRight(2)
 
+	// This is text displayed containing actual values. Usually used together with detailsHeader
 	detailsContent = lipgloss.NewStyle().
 			Foreground(body).
 			PaddingBottom(1)
@@ -115,15 +113,21 @@ func (r *Result) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			return r, tea.Quit
 		case "down":
-			r.selected++
+			if r.selected < len(r.items)-1 {
+				r.selected++
+			}
 		case "up":
-			r.selected--
+			if r.selected > 0 {
+				r.selected--
+			}
 		}
 	case tea.WindowSizeMsg:
 		h, v := lipgloss.NewStyle().Margin(1, 2).GetFrameSize()
 		r.list.SetSize(msg.Width-h, msg.Height-v)
 		w := msg.Width - listPaneWidth - h
+		he := msg.Height - v
 		detailsPane = detailsPane.Width(w)
+		detailsPane = detailsPane.Height(he - 1)
 	}
 
 	var cmd tea.Cmd
@@ -132,23 +136,6 @@ func (r *Result) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (r *Result) View() string {
-
-	//const width = 70
-
-	// vp := viewport.New(0, 20)
-	// vp.Style = lipgloss.NewStyle().
-	// 	BorderStyle(lipgloss.RoundedBorder()).
-	// 	BorderForeground(lipgloss.Color("62")).
-	// 	PaddingRight(2)
-
-	// renderer, _ := glamour.NewTermRenderer(
-	// 	glamour.WithAutoStyle(),
-	// 	//glamour.WithWordWrap(width),
-	// )
-
-	// str, _ := renderer.Render("```yaml\n" + string(r.items[r.selected].raw) + "\n```")
-
-	//vp.SetContent(str)
 
 	curContext := lipgloss.JoinVertical(
 		lipgloss.Top,
@@ -201,7 +188,6 @@ func (r *Result) View() string {
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, listPane.Render(r.list.View()), detailsPane.Render(details))
 
-	//return lipgloss.NewStyle().Margin(1, 2).Render()
 }
 
 func (r *Result) getContextCount() string {
@@ -245,13 +231,9 @@ func (r *Result) getSize() string {
 	return ByteCountSI(int64(r.items[r.selected].info.Size()))
 }
 
-func init() {
-	pflag.StringVar(&cfgPath, "path", "~/.kube/", "Path to a folder containing kubeconfig files. The program will search within directories for valid kubeconfigs.")
-}
-
 func usage() {
 	fmt.Fprint(os.Stderr, "Usage:\n")
-	fmt.Fprint(os.Stderr, "  kubecfg [OPTIONS]\n\n")
+	fmt.Fprint(os.Stderr, "  kubecfg [PATH] <flags>\n\n")
 
 	title := "kubecfg Kubernetes kubconfig manager"
 	fmt.Fprint(os.Stderr, title+"\n\n")
@@ -262,7 +244,23 @@ func usage() {
 	fmt.Fprintln(os.Stderr, pflag.CommandLine.FlagUsages())
 }
 
+func parseArgs() (string, error) {
+	if len(os.Args) >= 2 {
+		return os.Args[1], nil
+	}
+	h, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return path.Join(h, ".kube/"), nil
+}
+
 func main() {
+	p, err := parseArgs()
+	if err != nil {
+		fmt.Printf("%s", err)
+		os.Exit(1)
+	}
 
 	showver := pflag.Bool("version", false, "Print version")
 	pflag.Usage = usage
@@ -278,7 +276,7 @@ func main() {
 
 	res := &Result{}
 
-	err := filepath.Walk(cfgPath, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(p, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -304,19 +302,16 @@ func main() {
 		return nil
 	})
 	if err != nil {
-		log.Fatal(err)
+		fmt.Printf("%s", err)
+		os.Exit(1)
 	}
 	res.list = list.New(res.List(), list.NewDefaultDelegate(), 0, 0)
-	res.list.Title = fmt.Sprintf("%d kubeconfigs in %s", len(res.items), cfgPath)
+	res.list.Title = fmt.Sprintf("%d kubeconfigs in %s", len(res.items), p)
 
-	p := tea.NewProgram(res, tea.WithAltScreen())
-	if _, err := p.Run(); err != nil {
+	prog := tea.NewProgram(res, tea.WithAltScreen())
+	if _, err := prog.Run(); err != nil {
 		fmt.Println("Error running program:", err)
 		os.Exit(1)
 	}
 
-	// log.Printf("Found %d kubeconfigs in %s", len(results), cfgPath)
-	// for _, r := range results {
-	// 	log.Printf("\t%s", r.info.Name())
-	// }
 }
