@@ -5,6 +5,7 @@ import (
 
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -56,6 +57,11 @@ var (
 			Width(listPaneWidth).
 			Height(listPaneHeight).
 			PaddingTop(1)
+
+	errorStyle = lipgloss.NewStyle().
+			Background(lipgloss.Color("#d75f00")).
+			Foreground(lipgloss.Color("#eeeeee")).
+			MarginRight(2)
 
 	// The pane on the right that displays details about the currently selected file
 	detailsPane = lipgloss.NewStyle().
@@ -160,7 +166,6 @@ func (r *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		detailsPane = detailsPane.Width(w)
 		detailsPane = detailsPane.Height(he - 1)
 	case OverwriteConfigMsg:
-		fmt.Printf("asdasdasd")
 		r.state = stateShowDefault
 		newDetaultModel, cmd := r.defaultModel.update(msg)
 		r.defaultModel = newDetaultModel
@@ -425,7 +430,8 @@ var (
 	choices    = []string{"Make a backup and create a symlink to it", "Delete it. I want a fresh start", "Do nothing, I'm too paranoid to know what to do"}
 	titleStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#7D56F4")).
-			Margin(1, 2)
+			Margin(1, 2).
+			Width(70)
 	selectedStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("230")).
 			MarginLeft(2)
@@ -437,6 +443,7 @@ var (
 type warningModel struct {
 	cursor int
 	choice string
+	errMsg string
 }
 
 func newWarningModel() warningModel {
@@ -464,7 +471,13 @@ func (m warningModel) update(msg tea.Msg) (warningModel, tea.Cmd) {
 			return m, tea.Quit
 		case "enter":
 			m.choice = choices[m.cursor]
-			cmds = append(cmds, OverwriteConfigCmd())
+			err := m.executeChoice(m.cursor)
+			if err != nil {
+				m.errMsg = err.Error()
+			} else {
+				cmds = append(cmds, OverwriteConfigCmd())
+			}
+
 		case "down", "j":
 			m.cursor++
 			if m.cursor >= len(choices) {
@@ -478,6 +491,60 @@ func (m warningModel) update(msg tea.Msg) (warningModel, tea.Cmd) {
 		}
 	}
 	return m, tea.Batch(cmds...)
+}
+
+func (m *warningModel) executeChoice(i int) error {
+	p, err := parseArgs()
+	if err != nil {
+		return err
+	}
+	switch i {
+	case 0:
+		err := m.copyFile(path.Join(p, "config"), path.Join(p, fmt.Sprintf("%s_kubecfg-backup", "config")))
+		if err != nil {
+			return err
+		}
+		err = os.Remove(path.Join(p, "config"))
+		if err != nil {
+			return err
+		}
+		err = m.createLink(fmt.Sprintf("%s_kubecfg-backup", "config"), path.Join(p, "config"))
+		if err != nil {
+			return err
+		}
+	case 1:
+	case 2:
+	default:
+	}
+	return nil
+}
+
+func (m *warningModel) copyFile(src, dst string) error {
+	// srcStat, err := os.Stat(src)
+	// if err != nil {
+	// 	return err
+	// }
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *warningModel) createLink(target, link string) error {
+	return os.Symlink(target, link)
 }
 
 func (m warningModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -494,6 +561,10 @@ func (m warningModel) View() string {
 			s.WriteString(inactiveStyle.Render("  " + choices[i]))
 		}
 		s.WriteString("\n")
+	}
+
+	if len(m.errMsg) > 0 {
+		s.WriteString("\n  " + errorStyle.Render(fmt.Sprintf("Error: %s", m.errMsg)))
 	}
 
 	return s.String()
