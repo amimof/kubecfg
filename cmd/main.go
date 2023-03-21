@@ -96,21 +96,26 @@ type model struct {
 }
 
 type defaultModel struct {
-	items    []Item
+	items    []*Item
 	list     list.Model
 	selected int
+	errMsg   string
 }
 
 type Item struct {
-	config *api.Config
-	info   os.FileInfo
-	title  string
-	desc   string
-	raw    []byte
+	config     *api.Config
+	info       os.FileInfo
+	title      string
+	desc       string
+	isSelected bool
 }
 
 func (i Item) Title() string {
-	return i.title
+	s := i.title
+	if i.isSelected {
+		s = lipgloss.NewStyle().Foreground(lipgloss.Color("#87ffaf")).Render(i.title + " •")
+	}
+	return s
 }
 func (i Item) Description() string {
 	return i.desc
@@ -125,15 +130,14 @@ func newDefaultModel() defaultModel {
 
 func New() *model {
 	r := &model{
-		//activeView:          VIEW_DEFAULT,
-		state:        stateShowWarning,
+		state:        stateShowDefault,
 		defaultModel: newDefaultModel(),
 		warningModel: newWarningModel(),
 	}
 	return r
 }
 
-func (r *defaultModel) Add(i Item) {
+func (r *defaultModel) Add(i *Item) {
 	r.items = append(r.items, i)
 }
 
@@ -188,6 +192,7 @@ func (r *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (r defaultModel) update(msg tea.Msg) (defaultModel, tea.Cmd) {
+	var cmds []tea.Cmd
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch keypress := msg.String(); keypress {
@@ -201,6 +206,20 @@ func (r defaultModel) update(msg tea.Msg) (defaultModel, tea.Cmd) {
 			if r.selected > 0 {
 				r.selected--
 			}
+		case "enter":
+			p, err := parseArgs()
+			if err != nil {
+				r.errMsg = err.Error()
+			}
+			err = os.Remove(path.Join(p, "config"))
+			if err != nil {
+				r.errMsg = err.Error()
+			}
+			err = os.Symlink(path.Join(p, r.items[r.selected].info.Name()), path.Join(p, "config"))
+			if err != nil {
+				r.errMsg = err.Error()
+			}
+			r.selectItem(r.selected)
 		}
 	case tea.WindowSizeMsg:
 		h, v := lipgloss.NewStyle().Margin(1, 2).GetFrameSize()
@@ -210,9 +229,17 @@ func (r defaultModel) update(msg tea.Msg) (defaultModel, tea.Cmd) {
 		detailsPane = detailsPane.Width(w)
 		detailsPane = detailsPane.Height(he - 1)
 	}
-	var cmd tea.Cmd
-	r.list, cmd = r.list.Update(msg)
-	return r, cmd
+	l, cmd := r.list.Update(msg)
+	r.list = l
+	cmds = append(cmds, cmd)
+	return r, tea.Batch(cmds...)
+}
+
+func (r *defaultModel) selectItem(i int) {
+	for _, i := range r.items {
+		i.isSelected = false
+	}
+	r.items[i].isSelected = true
 }
 
 func (r defaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -256,12 +283,14 @@ func (r defaultModel) View() string {
 		detailsHeader.Render("Size"),
 		detailsContent.Render(r.getSize()),
 	)
+
 	details := lipgloss.JoinVertical(
 		lipgloss.Top,
 		counts,
 		curContext,
 		modified,
 		sizeBytes,
+		errorStyle.Render(r.errMsg),
 	)
 	return lipgloss.JoinHorizontal(lipgloss.Top, listPane.Render(r.list.View()), detailsPane.Render(details))
 }
@@ -370,26 +399,25 @@ func main() {
 		res.state = stateShowWarning
 	}
 
-	err = filepath.Walk(p, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(p, func(filePath string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if !info.IsDir() {
-			config, err := clientcmd.LoadFromFile(path)
+			config, err := clientcmd.LoadFromFile(filePath)
 			if err != nil {
 				return nil
 			}
-			// Read file so that we can reference raw data later
-			b, err := os.ReadFile(path)
-			if err != nil {
-				return nil
-			}
-			i := Item{
+			i := &Item{
 				config: config,
 				info:   info,
 				title:  info.Name(),
 				desc:   fmt.Sprintf("%d contexts", len(config.Contexts)),
-				raw:    b,
+			}
+			if pa, err := filepath.EvalSymlinks(path.Join(p, "config")); err == nil {
+				if pa == filePath {
+					i.isSelected = true
+				}
 			}
 			res.defaultModel.Add(i)
 		}
@@ -427,7 +455,11 @@ func CheckConfig(p string) error {
 }
 
 var (
-	choices    = []string{"Make a backup and create a symlink to it", "Delete it. I want a fresh start", "Do nothing, I'm too paranoid to know what to do"}
+	choices = []string{
+		"Make a backup and create a symlink to it",
+		"Delete it. I want a fresh start",
+		"Do nothing, I'm too paranoid to know what to do",
+	}
 	titleStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#7D56F4")).
 			Margin(1, 2).
@@ -546,6 +578,13 @@ func (m *warningModel) copyFile(src, dst string) error {
 func (m *warningModel) createLink(target, link string) error {
 	return os.Symlink(target, link)
 }
+
+// func (m *warningModel) SwitchConfig(src, dst string) error {
+// 	if err := m.copyFile(src, dst); err != nil {
+// 		return err
+// 	}
+// 	if err :=
+// }
 
 func (m warningModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m.update(msg)
