@@ -1,6 +1,7 @@
 package view
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -10,18 +11,23 @@ import (
 	"github.com/amimof/kubecfg/pkg/cfg"
 	"github.com/amimof/kubecfg/pkg/style"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"k8s.io/apimachinery/pkg/util/duration"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
 )
 
 type MainView struct {
-	cfg      *cfg.Cfg
-	items    []*Item
-	List     list.Model
-	selected int
-	errMsg   string
+	List        list.Model
+	Input       textinput.Model
+	cfg         *cfg.Cfg
+	items       []*Item
+	selected    int
+	errMsg      string
+	creatingNew bool
+	newItemView newItemModel
 }
 
 type Item struct {
@@ -46,8 +52,9 @@ func (i Item) FilterValue() string {
 	return i.title
 }
 
-func (r *MainView) Add(i *Item) {
+func (r *MainView) AddItem(i *Item) {
 	r.items = append(r.items, i)
+	r.List.SetItems(r.ListItems())
 }
 
 func (r *MainView) ListItems() []list.Item {
@@ -65,7 +72,6 @@ func (r *MainView) NewItem(c *api.Config, info os.FileInfo, title, desc string) 
 		title:  info.Name(),
 		desc:   fmt.Sprintf("%d contexts", len(c.Contexts)),
 	}
-	//r.items = append(r.items, i)
 	return i
 }
 
@@ -73,9 +79,10 @@ func (r MainView) Init() tea.Cmd {
 	return nil
 }
 
-func (r MainView) UpdateView(msg tea.Msg) (MainView, tea.Cmd) {
+func (r MainView) UpdateView(ms tea.Msg) (MainView, tea.Cmd) {
 	var cmds []tea.Cmd
-	switch msg := msg.(type) {
+
+	switch msg := ms.(type) {
 	case tea.KeyMsg:
 		switch keypress := msg.String(); keypress {
 		case "ctrl+c":
@@ -97,7 +104,9 @@ func (r MainView) UpdateView(msg tea.Msg) (MainView, tea.Cmd) {
 			if err != nil {
 				r.errMsg = err.Error()
 			}
-			r.selectItem(r.selected)
+			r.SelectItem(r.selected)
+		case "n", "+":
+			r.creatingNew = true
 		}
 	case tea.WindowSizeMsg:
 		h, v := lipgloss.NewStyle().Margin(1, 2).GetFrameSize()
@@ -106,14 +115,65 @@ func (r MainView) UpdateView(msg tea.Msg) (MainView, tea.Cmd) {
 		he := msg.Height - v
 		style.DetailsPane = style.DetailsPane.Width(w)
 		style.DetailsPane = style.DetailsPane.Height(he - 1)
+	case NewItemCreatedMsg:
+		r.creatingNew = false
+		m := ms.(NewItemCreatedMsg)
+		i, err := r.NewKubeconfig(path.Join(r.cfg.Path, m.Name))
+		if err != nil {
+			r.errMsg = err.Error()
+			return r, nil
+		}
+		r.SelectItem(len(r.items) - 1)
+		r.AddItem(i)
+		cmds = append(cmds, r.Input.Focus())
 	}
-	l, cmd := r.List.Update(msg)
-	r.List = l
-	cmds = append(cmds, cmd)
+
+	if r.creatingNew {
+		newItemModel, cmd := r.newItemView.UpdateView(ms)
+		r.newItemView = newItemModel
+		cmds = append(cmds, cmd)
+	} else {
+		l, cmd := r.List.Update(ms)
+		r.List = l
+		cmds = append(cmds, cmd)
+	}
+
 	return r, tea.Batch(cmds...)
 }
 
-func (r *MainView) selectItem(i int) {
+func (r *MainView) NewKubeconfig(p string) (*Item, error) {
+	body := []byte(`apiVersion: v1
+clusters: []
+contexts: []
+current-context: ""
+kind: Config
+preferences: {}
+users: []
+`)
+	if _, err := os.Stat(p); err == nil {
+		return nil, errors.New(fmt.Sprintf("File %s already exists", p))
+	}
+	err := os.WriteFile(p, body, 0666)
+	if err != nil {
+		return nil, err
+	}
+	config, err := clientcmd.LoadFromFile(p)
+	if err != nil {
+		return nil, err
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	return r.NewItem(config, info, info.Name(), fmt.Sprintf("%d contexts", len(config.Contexts))), nil
+}
+
+func (r *MainView) SelectItem(i int) {
 	for _, i := range r.items {
 		i.IsSelected = false
 	}
@@ -162,14 +222,19 @@ func (r MainView) View() string {
 		style.DetailsContent.Render(r.getSize()),
 	)
 
-	details := lipgloss.JoinVertical(
-		lipgloss.Top,
-		counts,
-		curContext,
-		modified,
-		sizeBytes,
-		style.ErrorStyle.Render(r.errMsg),
-	)
+	var details string
+	if r.creatingNew {
+		details = r.newItemView.View()
+	} else {
+		details = lipgloss.JoinVertical(
+			lipgloss.Top,
+			counts,
+			curContext,
+			modified,
+			sizeBytes,
+			style.ErrorStyle.Render(r.errMsg),
+		)
+	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, style.ListPane.Render(r.List.View()), style.DetailsPane.Render(details))
 }
 
@@ -215,7 +280,17 @@ func byteCountSI(b int64) string {
 }
 
 func NewMainView(c *cfg.Cfg) MainView {
+	ti := textinput.New()
+	ti.Placeholder = "Enter filename"
+	ti.Focus()
+	ti.CharLimit = 156
+	ti.Width = 35
+	emptyList := []list.Item{}
+	li := list.New(emptyList, list.NewDefaultDelegate(), 0, 0)
 	return MainView{
-		cfg: c,
+		cfg:         c,
+		Input:       ti,
+		List:        li,
+		newItemView: NewNewItemView(c),
 	}
 }
