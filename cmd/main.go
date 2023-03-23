@@ -170,7 +170,7 @@ func main() {
 			if err != nil {
 				return nil
 			}
-			i := res.mainView.NewItem(config, info, info.Name(), fmt.Sprintf("%d contexts", len(config.Contexts)))
+			i := view.NewItem(config, info, info.Name(), fmt.Sprintf("%d contexts", len(config.Contexts)))
 			if pa, err := filepath.EvalSymlinks(path.Join(p, "config")); err == nil {
 				if pa == filePath {
 					i.IsSelected = true

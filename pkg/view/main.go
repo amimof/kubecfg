@@ -14,7 +14,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"k8s.io/apimachinery/pkg/util/duration"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
 )
 
@@ -64,7 +63,7 @@ func (r *MainView) ListItems() []list.Item {
 	return items
 }
 
-func (r *MainView) NewItem(c *api.Config, info os.FileInfo, title, desc string) *Item {
+func NewItem(c *api.Config, info os.FileInfo, title, desc string) *Item {
 	i := &Item{
 		config: c,
 		info:   info,
@@ -118,13 +117,8 @@ func (r MainView) UpdateView(ms tea.Msg) (MainView, tea.Cmd) {
 	case NewItemCreatedMsg:
 		r.creatingNew = false
 		m := ms.(NewItemCreatedMsg)
-		if m.Name != "" {
-			i, err := r.NewKubeconfig(path.Join(r.cfg.Path, m.Name))
-			if err != nil {
-				r.errMsg = err.Error()
-				return r, nil
-			}
-			r.AddItem(i)
+		if m.Item != nil {
+			r.AddItem(m.Item)
 			r.SelectItem(len(r.items) - 1)
 		}
 	}
@@ -140,38 +134,6 @@ func (r MainView) UpdateView(ms tea.Msg) (MainView, tea.Cmd) {
 	}
 
 	return r, tea.Batch(cmds...)
-}
-
-func (r *MainView) NewKubeconfig(p string) (*Item, error) {
-	body := []byte(`apiVersion: v1
-clusters: []
-contexts: []
-current-context: ""
-kind: Config
-preferences: {}
-users: []
-`)
-	if _, err := os.Stat(p); err == nil {
-		return nil, fmt.Errorf("File %s already exists", p)
-	}
-	err := os.WriteFile(p, body, 0666)
-	if err != nil {
-		return nil, err
-	}
-	config, err := clientcmd.LoadFromFile(p)
-	if err != nil {
-		return nil, err
-	}
-	f, err := os.Open(p)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	return r.NewItem(config, info, info.Name(), fmt.Sprintf("%d contexts", len(config.Contexts))), nil
 }
 
 func (r *MainView) SelectItem(i int) {
