@@ -9,6 +9,7 @@ PKGS     = $(or $(PKG),$(shell env GO111MODULE=on $(GO) list ./...))
 TESTPKGS = $(shell env GO111MODULE=on $(GO) list -f \
 			'{{ if or .TestGoFiles .XTestGoFiles }}{{ .ImportPath }}{{ end }}' \
 			$(PKGS))
+BUILDPATH ?= $(BIN)/$(shell basename $(MODULE))
 SRC_FILES=find . -name "*.go" -type f -not -path "./vendor/*" -not -path "./.git/*" -not -path "./.cache/*" -print0 | xargs -0 
 BIN      = $(CURDIR)/bin
 TBIN		 = $(CURDIR)/test/bin
@@ -27,11 +28,11 @@ export CGO_ENABLED=0
 all: |kubecfg ## Build app program binaries
 
 .PHONY: kubecfg
-kubecfg: | $(BIN) ; $(info $(M) building executable to $(BIN)/kubecfg) @ ## Build kubecfg binary
+kubecfg: | $(BIN) ; $(info $(M) building executable to $(BUILDPATH)) @ ## Build kubecfg binary
 	$Q $(GO) build \
 		-tags release \
 		-ldflags '-X main.VERSION=${VERSION} -X main.COMMIT=${COMMIT} -X main.BRANCH=${BRANCH} -X main.GOVERSION=${GOVERSION}' \
-		-o $(BIN)/kubecfg cmd/main.go
+		-o $(BUILDPATH) cmd/main.go
 
 # Tools
 $(BIN):
