@@ -1,4 +1,7 @@
 # kubecfg
+
+[![Go](https://github.com/amimof/kubecfg/actions/workflows/go.yaml/badge.svg)](https://github.com/amimof/kubecfg/actions/workflows/go.yaml)
+
 `kubecfg` is an interactive command line tool which lets you switch between [kubectl](kubectl.docs.kubernetes.io/) configuration files (known as kubeconfigs).
 
 <img src="img/index.gif" alt="drawing" width="800"/>
