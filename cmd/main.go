@@ -81,7 +81,6 @@ func (r *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		newDetaultModel, cmd := r.mainView.UpdateView(msg)
 		r.mainView = newDetaultModel
 		cmds = append(cmds, cmd)
-
 	}
 
 	switch r.state {

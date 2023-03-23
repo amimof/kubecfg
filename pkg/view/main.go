@@ -1,7 +1,6 @@
 package view
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -107,6 +106,7 @@ func (r MainView) UpdateView(ms tea.Msg) (MainView, tea.Cmd) {
 			r.SelectItem(r.selected)
 		case "n", "+":
 			r.creatingNew = true
+			return r, nil
 		}
 	case tea.WindowSizeMsg:
 		h, v := lipgloss.NewStyle().Margin(1, 2).GetFrameSize()
@@ -118,14 +118,15 @@ func (r MainView) UpdateView(ms tea.Msg) (MainView, tea.Cmd) {
 	case NewItemCreatedMsg:
 		r.creatingNew = false
 		m := ms.(NewItemCreatedMsg)
-		i, err := r.NewKubeconfig(path.Join(r.cfg.Path, m.Name))
-		if err != nil {
-			r.errMsg = err.Error()
-			return r, nil
+		if m.Name != "" {
+			i, err := r.NewKubeconfig(path.Join(r.cfg.Path, m.Name))
+			if err != nil {
+				r.errMsg = err.Error()
+				return r, nil
+			}
+			r.AddItem(i)
+			r.SelectItem(len(r.items) - 1)
 		}
-		r.SelectItem(len(r.items) - 1)
-		r.AddItem(i)
-		cmds = append(cmds, r.Input.Focus())
 	}
 
 	if r.creatingNew {
@@ -151,7 +152,7 @@ preferences: {}
 users: []
 `)
 	if _, err := os.Stat(p); err == nil {
-		return nil, errors.New(fmt.Sprintf("File %s already exists", p))
+		return nil, fmt.Errorf("File %s already exists", p)
 	}
 	err := os.WriteFile(p, body, 0666)
 	if err != nil {
@@ -282,7 +283,7 @@ func byteCountSI(b int64) string {
 func NewMainView(c *cfg.Cfg) MainView {
 	ti := textinput.New()
 	ti.Placeholder = "Enter filename"
-	ti.Focus()
+	//ti.Focus()
 	ti.CharLimit = 156
 	ti.Width = 35
 	emptyList := []list.Item{}
