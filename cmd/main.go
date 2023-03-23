@@ -14,7 +14,6 @@ import (
 	"github.com/amimof/kubecfg/pkg/cfg"
 	"github.com/amimof/kubecfg/pkg/style"
 	"github.com/amimof/kubecfg/pkg/view"
-	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/pflag"
@@ -82,7 +81,6 @@ func (r *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		newDetaultModel, cmd := r.mainView.UpdateView(msg)
 		r.mainView = newDetaultModel
 		cmds = append(cmds, cmd)
-
 	}
 
 	switch r.state {
@@ -172,13 +170,13 @@ func main() {
 			if err != nil {
 				return nil
 			}
-			i := res.mainView.NewItem(config, info, info.Name(), fmt.Sprintf("%d contexts", len(config.Contexts)))
+			i := view.NewItem(config, info, info.Name(), fmt.Sprintf("%d contexts", len(config.Contexts)))
 			if pa, err := filepath.EvalSymlinks(path.Join(p, "config")); err == nil {
 				if pa == filePath {
 					i.IsSelected = true
 				}
 			}
-			res.mainView.Add(i)
+			res.mainView.AddItem(i)
 		}
 		return nil
 	})
@@ -186,9 +184,6 @@ func main() {
 		fmt.Printf("%s", err)
 		os.Exit(1)
 	}
-
-	res.mainView.List = list.New(res.mainView.ListItems(), list.NewDefaultDelegate(), 0, 0)
-	res.mainView.List.Title = p
 
 	prog := tea.NewProgram(res, tea.WithAltScreen())
 	if _, err := prog.Run(); err != nil {
