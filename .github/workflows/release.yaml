@@ -27,78 +27,83 @@ jobs:
       run: |
         GOOS=linux GOARCH=amd64 BUILDPATH=./bin/kubecfg-linux-amd64 make
         GOOS=linux GOARCH=arm BUILDPATH=./bin/kubecfg-linux-arm make
-        GOOS=linux GOARCH=arm64 BUILDPATH=./bin/kubecfg-linux-arm64 make
-        GOOS=windows GOARCH=amd64 BUILDPATH=./bin/kubecfg-windows-amd64.exe make
-        GOOS=darwin GOARCH=amd64 BUILDPATH=./bin/kubecfg-darwin-amd64 make
-        GOOS=darwin GOARCH=arm64 BUILDPATH=./bin/kubecfg-darwin-arm64 make
 
-    - name: Create Release
-      uses: actions/create-release@v1
-      id: create_release
+    - uses: ncipollo/release-action@v1
       with:
-        draft: true
-        prerelease: false
-        release_name: ${{ github.ref }}
-        tag_name: ${{ github.ref }}
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
+        artifacts: "./bin/*"
+        
+    #     GOOS=linux GOARCH=arm64 BUILDPATH=./bin/kubecfg-linux-arm64 make
+    #     GOOS=windows GOARCH=amd64 BUILDPATH=./bin/kubecfg-windows-amd64.exe make
+    #     GOOS=darwin GOARCH=amd64 BUILDPATH=./bin/kubecfg-darwin-amd64 make
+    #     GOOS=darwin GOARCH=arm64 BUILDPATH=./bin/kubecfg-darwin-arm64 make
 
-    - name: Upload Binary linux-amd64
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./bin/kubecfg-linux-amd64
-        asset_name: kubecfg-linux-amd64
-        asset_content_type: application/zip
+    # - name: Create Release
+    #   uses: actions/create-release@v1
+    #   id: create_release
+    #   with:
+    #     draft: true
+    #     prerelease: false
+    #     release_name: ${{ github.ref }}
+    #     tag_name: ${{ github.ref }}
+    #   env:
+    #     GITHUB_TOKEN: ${{ github.token }}
 
-    - name: Upload Binary linux-arm
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./bin/kubecfg-linux-arm
-        asset_name: kubecfg-linux-arm
-        asset_content_type: application/zip
+    # - name: Upload Binary linux-amd64
+    #   uses: actions/upload-release-asset@v1
+    #   env:
+    #     GITHUB_TOKEN: ${{ github.token }}
+    #   with:
+    #     upload_url: ${{ steps.create_release.outputs.upload_url }}
+    #     asset_path: ./bin/kubecfg-linux-amd64
+    #     asset_name: kubecfg-linux-amd64
+    #     asset_content_type: application/zip
 
-    - name: Upload Binary linux-arm64
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./bin/kubecfg-linux-arm64
-        asset_name: kubecfg-linux-arm64
-        asset_content_type: application/zip
+    # - name: Upload Binary linux-arm
+    #   uses: actions/upload-release-asset@v1
+    #   env:
+    #     GITHUB_TOKEN: ${{ github.token }}
+    #   with:
+    #     upload_url: ${{ steps.create_release.outputs.upload_url }}
+    #     asset_path: ./bin/kubecfg-linux-arm
+    #     asset_name: kubecfg-linux-arm
+    #     asset_content_type: application/zip
 
-    - name: Upload Binary windows-amd64
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./bin/kubecfg-windows-amd64.exe
-        asset_name: kubecfg-windows-amd64.exe
-        asset_content_type: application/zip
+    # - name: Upload Binary linux-arm64
+    #   uses: actions/upload-release-asset@v1
+    #   env:
+    #     GITHUB_TOKEN: ${{ github.token }}
+    #   with:
+    #     upload_url: ${{ steps.create_release.outputs.upload_url }}
+    #     asset_path: ./bin/kubecfg-linux-arm64
+    #     asset_name: kubecfg-linux-arm64
+    #     asset_content_type: application/zip
 
-    - name: Upload Binary darwin-amd64
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./bin/kubecfg-darwin-amd64
-        asset_name: kubecfg-darwin-amd64
-        asset_content_type: application/zip
+    # - name: Upload Binary windows-amd64
+    #   uses: actions/upload-release-asset@v1
+    #   env:
+    #     GITHUB_TOKEN: ${{ github.token }}
+    #   with:
+    #     upload_url: ${{ steps.create_release.outputs.upload_url }}
+    #     asset_path: ./bin/kubecfg-windows-amd64.exe
+    #     asset_name: kubecfg-windows-amd64.exe
+    #     asset_content_type: application/zip
 
-    - name: Upload Binary darwin-arm64
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./bin/kubecfg-darwin-arm64
-        asset_name: kubecfg-darwin-arm64
-        asset_content_type: application/zip
+    # - name: Upload Binary darwin-amd64
+    #   uses: actions/upload-release-asset@v1
+    #   env:
+    #     GITHUB_TOKEN: ${{ github.token }}
+    #   with:
+    #     upload_url: ${{ steps.create_release.outputs.upload_url }}
+    #     asset_path: ./bin/kubecfg-darwin-amd64
+    #     asset_name: kubecfg-darwin-amd64
+    #     asset_content_type: application/zip
+
+    # - name: Upload Binary darwin-arm64
+    #   uses: actions/upload-release-asset@v1
+    #   env:
+    #     GITHUB_TOKEN: ${{ github.token }}
+    #   with:
+    #     upload_url: ${{ steps.create_release.outputs.upload_url }}
+    #     asset_path: ./bin/kubecfg-darwin-arm64
+    #     asset_name: kubecfg-darwin-arm64
+    #     asset_content_type: application/zip
