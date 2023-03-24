@@ -16,10 +16,10 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: Set up Go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v4
       with:
         go-version: 1.19
 
@@ -31,7 +31,7 @@ jobs:
     - uses: ncipollo/release-action@v1
       with:
         artifacts: "./bin/*"
-        
+
     #     GOOS=linux GOARCH=arm64 BUILDPATH=./bin/kubecfg-linux-arm64 make
     #     GOOS=windows GOARCH=amd64 BUILDPATH=./bin/kubecfg-windows-amd64.exe make
     #     GOOS=darwin GOARCH=amd64 BUILDPATH=./bin/kubecfg-darwin-amd64 make
