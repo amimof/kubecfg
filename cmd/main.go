@@ -19,6 +19,7 @@ import (
 	"github.com/amimof/kubecfg/pkg/view"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/fatih/color"
 	"github.com/spf13/pflag"
 )
 
@@ -216,6 +217,8 @@ func (r *model) Run(interactive bool) error {
 		os.Exit(0)
 	}
 
+	stdcfg := path.Join(r.Cfg.Path, "config")
+
 	// TODO: Explore if we can use preview in fzf
 	cmd := exec.Command("/opt/homebrew/bin/fzf", "--ansi", "--height=~10")
 	var out bytes.Buffer
@@ -227,7 +230,15 @@ func (r *model) Run(interactive bool) error {
 	// Write each kubeconfig to stdin ignoring 'config' which is a symlink
 	for _, i := range r.mainView.ListItemsStr() {
 		if i != "config" {
-			in.WriteString(path.Join(i + "\n"))
+			sym, err := filepath.EvalSymlinks(stdcfg)
+			if err != nil {
+				return err
+			}
+			if path.Base(sym) == i {
+				in.WriteString(color.GreenString(i + "\n"))
+				continue
+			}
+			in.WriteString(i + "\n")
 		}
 	}
 
@@ -243,15 +254,15 @@ func (r *model) Run(interactive bool) error {
 	}
 
 	// Remove existing symlink to config so we don't run into an error
-	if _, err := os.Stat(path.Join(r.Cfg.Path, "config")); !os.IsNotExist(err) {
-		err := os.Remove(path.Join(r.Cfg.Path, "config"))
+	if _, err := os.Stat(stdcfg); !os.IsNotExist(err) {
+		err := os.Remove(stdcfg)
 		if err != nil {
 			return err
 		}
 	}
 
 	// Create the symlink to config
-	err := os.Symlink(path.Join(r.Cfg.Path, selected), path.Join(r.Cfg.Path, "config"))
+	err := os.Symlink(path.Join(r.Cfg.Path, selected), stdcfg)
 	if err != nil {
 		return err
 	}
