@@ -63,6 +63,14 @@ func (r *MainView) ListItems() []list.Item {
 	return items
 }
 
+func (r *MainView) ListItemsStr() []string {
+	var items []string
+	for _, i := range r.items {
+		items = append(items, i.info.Name())
+	}
+	return items
+}
+
 func NewItem(c *api.Config, info os.FileInfo, title, desc string) *Item {
 	i := &Item{
 		config: c,
