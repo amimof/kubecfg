@@ -3,11 +3,14 @@ package main
 import (
 	//"flag"
 
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -16,6 +19,7 @@ import (
 	"github.com/amimof/kubecfg/pkg/view"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/fatih/color"
 	"github.com/spf13/pflag"
 )
 
@@ -49,10 +53,12 @@ type model struct {
 	state            state
 	backupConfigView view.BackupConfigView
 	mainView         view.MainView
+	Cfg              *cfg.Cfg
 }
 
 func New(c *cfg.Cfg) *model {
 	r := &model{
+		Cfg:              c,
 		state:            stateShowDefault,
 		backupConfigView: view.NewBackupConfigView(c),
 		mainView:         view.NewMainView(c),
@@ -134,13 +140,20 @@ func parseArgs() (string, error) {
 }
 
 func main() {
-	p, err := parseArgs()
+	// p, err := parseArgs()
+	// if err != nil {
+	// 	fmt.Printf("%s", err)
+	// 	os.Exit(1)
+	// }
+
+	h, err := os.UserHomeDir()
 	if err != nil {
-		fmt.Printf("%s", err)
+		fmt.Println("error trying to determine home dir", err)
 		os.Exit(1)
 	}
-
+	kubecfgdir := pflag.StringP("dir", "d", path.Join(h, ".kube/"), "Directory containing kubeconfig files")
 	showver := pflag.Bool("version", false, "Print version")
+	interactive := pflag.BoolP("interactive", "i", false, "Interactive TUI mode 😎")
 	pflag.Usage = usage
 
 	// Parse CLI flags
@@ -153,15 +166,19 @@ func main() {
 	}
 
 	res := New(&cfg.Cfg{
-		Path: p,
+		Path: *kubecfgdir,
 	})
 
 	// Evaluate if symlink ~/.kube/config already exists since we don't want to overwrite the users config file
-	if err = CheckConfig(path.Join(p, "config")); errors.Is(err, ErrExist) {
+	if err = CheckConfig(path.Join(*kubecfgdir, "config")); errors.Is(err, ErrExist) {
 		res.state = stateShowWarning
+		if !*interactive {
+			fmt.Printf("regular file %s exists\n", path.Join(*kubecfgdir, "config"))
+			return
+		}
 	}
 
-	err = filepath.Walk(p, func(filePath string, info os.FileInfo, err error) error {
+	err = filepath.Walk(*kubecfgdir, func(filePath string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -171,7 +188,7 @@ func main() {
 				return nil
 			}
 			i := view.NewItem(config, info, info.Name(), fmt.Sprintf("%d contexts", len(config.Contexts)))
-			if pa, err := filepath.EvalSymlinks(path.Join(p, "config")); err == nil {
+			if pa, err := filepath.EvalSymlinks(path.Join(*kubecfgdir, "config")); err == nil {
 				if pa == filePath {
 					i.IsSelected = true
 				}
@@ -185,12 +202,74 @@ func main() {
 		os.Exit(1)
 	}
 
-	prog := tea.NewProgram(res, tea.WithAltScreen())
-	if _, err := prog.Run(); err != nil {
-		fmt.Println("Error running program:", err)
-		os.Exit(1)
+	if err = res.Run(*interactive); err != nil {
+		fmt.Println(err)
 	}
 
+}
+
+func (r *model) Run(interactive bool) error {
+	if interactive {
+		prog := tea.NewProgram(r, tea.WithAltScreen())
+		if _, err := prog.Run(); err != nil {
+			return err
+		}
+		os.Exit(0)
+	}
+
+	stdcfg := path.Join(r.Cfg.Path, "config")
+
+	// TODO: Explore if we can use preview in fzf
+	cmd := exec.Command("/opt/homebrew/bin/fzf", "--ansi", "--height=~10")
+	var out bytes.Buffer
+	var in bytes.Buffer
+	cmd.Stdin = &in
+	cmd.Stdout = &out
+	cmd.Stderr = os.Stderr
+
+	// Write each kubeconfig to stdin ignoring 'config' which is a symlink
+	for _, i := range r.mainView.ListItemsStr() {
+		if i != "config" {
+			sym, err := filepath.EvalSymlinks(stdcfg)
+			if err != nil {
+				return err
+			}
+			if path.Base(sym) == i {
+				in.WriteString(color.GreenString(i + "\n"))
+				continue
+			}
+			in.WriteString(i + "\n")
+		}
+	}
+
+	if err := cmd.Run(); err != nil {
+		if _, ok := err.(*exec.ExitError); !ok {
+			return err
+		}
+	}
+
+	selected := strings.TrimSpace(out.String())
+	if selected == "" {
+		return errors.New("nothing selected")
+	}
+
+	// Remove existing symlink to config so we don't run into an error
+	if _, err := os.Stat(stdcfg); !os.IsNotExist(err) {
+		err := os.Remove(stdcfg)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Create the symlink to config
+	err := os.Symlink(path.Join(r.Cfg.Path, selected), stdcfg)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Switched context to %s", out.String())
+
+	return nil
 }
 
 func CheckConfig(p string) error {
