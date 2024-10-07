@@ -3,23 +3,13 @@ package main
 import (
 	//"flag"
 
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
-	"strings"
-
-	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/amimof/kubecfg/pkg/cfg"
-	"github.com/amimof/kubecfg/pkg/style"
-	"github.com/amimof/kubecfg/pkg/view"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/fatih/color"
 	"github.com/spf13/pflag"
 )
 
@@ -48,73 +38,6 @@ var (
 
 type state int
 
-// Top level app model
-type model struct {
-	state            state
-	backupConfigView view.BackupConfigView
-	mainView         view.MainView
-	Cfg              *cfg.Cfg
-}
-
-func New(c *cfg.Cfg) *model {
-	r := &model{
-		Cfg:              c,
-		state:            stateShowDefault,
-		backupConfigView: view.NewBackupConfigView(c),
-		mainView:         view.NewMainView(c),
-	}
-	return r
-}
-
-func (r *model) Init() tea.Cmd {
-	return nil
-}
-
-func (r *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-
-	var cmds []tea.Cmd
-
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		h, v := lipgloss.NewStyle().Margin(1, 2).GetFrameSize()
-		r.mainView.List.SetSize(msg.Width-h, msg.Height-v)
-		w := msg.Width - style.ListPaneWidth - h
-		he := msg.Height - v
-		style.DetailsPane = style.DetailsPane.Width(w)
-		style.DetailsPane = style.DetailsPane.Height(he - 1)
-	case view.ChangeViewMsg:
-		r.state = stateShowDefault
-		newDetaultModel, cmd := r.mainView.UpdateView(msg)
-		r.mainView = newDetaultModel
-		cmds = append(cmds, cmd)
-	}
-
-	switch r.state {
-	case stateShowDefault:
-		newDetaultModel, cmd := r.mainView.UpdateView(msg)
-		r.mainView = newDetaultModel
-		cmds = append(cmds, cmd)
-	case stateShowWarning:
-		newbackupConfigView, cmd := r.backupConfigView.UpdateView(msg)
-		r.backupConfigView = newbackupConfigView
-		cmds = append(cmds, cmd)
-	}
-
-	return r, tea.Batch(cmds...)
-}
-
-func (r *model) View() string {
-	var s string
-	switch r.state {
-	case stateShowWarning:
-		return r.backupConfigView.View()
-	case stateShowDefault:
-		return r.mainView.View()
-	}
-
-	return s
-
-}
 func usage() {
 	fmt.Fprint(os.Stderr, "Usage:\n")
 	fmt.Fprint(os.Stderr, "  kubecfg [PATH] <flags>\n\n")
@@ -140,20 +63,14 @@ func parseArgs() (string, error) {
 }
 
 func main() {
-	// p, err := parseArgs()
-	// if err != nil {
-	// 	fmt.Printf("%s", err)
-	// 	os.Exit(1)
-	// }
-
 	h, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Println("error trying to determine home dir", err)
 		os.Exit(1)
 	}
-	kubecfgdir := pflag.StringP("dir", "d", path.Join(h, ".kube/"), "Directory containing kubeconfig files")
+	kubeconfig := pflag.StringP("dir", "d", path.Join(h, ".kube/config"), "The symlink kubeconfig")
+	globs := pflag.StringSliceP("glob", "g", []string{path.Join(h, ".kube/*.yaml")}, "List files matching a pattern to include. This flag can be used multiple times.")
 	showver := pflag.Bool("version", false, "Print version")
-	interactive := pflag.BoolP("interactive", "i", false, "Interactive TUI mode 😎")
 	pflag.Usage = usage
 
 	// Parse CLI flags
@@ -165,114 +82,20 @@ func main() {
 		return
 	}
 
-	res := New(&cfg.Cfg{
-		Path: *kubecfgdir,
-	})
+	c := cfg.New(*kubeconfig, *globs...)
 
 	// Evaluate if symlink ~/.kube/config already exists since we don't want to overwrite the users config file
-	if err = CheckConfig(path.Join(*kubecfgdir, "config")); errors.Is(err, ErrExist) {
-		res.state = stateShowWarning
-		if !*interactive {
-			fmt.Printf("regular file %s exists\n", path.Join(*kubecfgdir, "config"))
-			return
-		}
+	if err = checkConfig(*kubeconfig); errors.Is(err, ErrExist) {
+		fmt.Printf("regular file %s exists\n", *kubeconfig)
+		return
 	}
 
-	err = filepath.Walk(*kubecfgdir, func(filePath string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			config, err := clientcmd.LoadFromFile(filePath)
-			if err != nil {
-				return nil
-			}
-			i := view.NewItem(config, info, info.Name(), fmt.Sprintf("%d contexts", len(config.Contexts)))
-			if pa, err := filepath.EvalSymlinks(path.Join(*kubecfgdir, "config")); err == nil {
-				if pa == filePath {
-					i.IsSelected = true
-				}
-			}
-			res.mainView.AddItem(i)
-		}
-		return nil
-	})
-	if err != nil {
-		fmt.Printf("%s", err)
-		os.Exit(1)
-	}
-
-	if err = res.Run(*interactive); err != nil {
+	if err = c.Run(); err != nil {
 		fmt.Println(err)
 	}
-
 }
 
-func (r *model) Run(interactive bool) error {
-	if interactive {
-		prog := tea.NewProgram(r, tea.WithAltScreen())
-		if _, err := prog.Run(); err != nil {
-			return err
-		}
-		os.Exit(0)
-	}
-
-	stdcfg := path.Join(r.Cfg.Path, "config")
-
-	// TODO: Explore if we can use preview in fzf
-	cmd := exec.Command("/opt/homebrew/bin/fzf", "--ansi", "--height=~10")
-	var out bytes.Buffer
-	var in bytes.Buffer
-	cmd.Stdin = &in
-	cmd.Stdout = &out
-	cmd.Stderr = os.Stderr
-
-	// Write each kubeconfig to stdin ignoring 'config' which is a symlink
-	for _, i := range r.mainView.ListItemsStr() {
-		if i != "config" {
-			sym, err := filepath.EvalSymlinks(stdcfg)
-			if err != nil {
-				return err
-			}
-			if path.Base(sym) == i {
-				in.WriteString(color.GreenString(i + "\n"))
-				continue
-			}
-			in.WriteString(i + "\n")
-		}
-	}
-
-	if err := cmd.Run(); err != nil {
-		if _, ok := err.(*exec.ExitError); !ok {
-			return err
-		}
-	}
-
-	selected := strings.TrimSpace(out.String())
-	if selected == "" {
-		return errors.New("nothing selected")
-	}
-
-	// Remove existing symlink to config so we don't run into an error
-	if _, err := os.Stat(stdcfg); !os.IsNotExist(err) {
-		err := os.Remove(stdcfg)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Create the symlink to config
-	err := os.Symlink(path.Join(r.Cfg.Path, selected), stdcfg)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Switched context to %s", out.String())
-
-	return nil
-}
-
-func CheckConfig(p string) error {
+func checkConfig(p string) error {
 	sPath, err := filepath.EvalSymlinks(p)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
