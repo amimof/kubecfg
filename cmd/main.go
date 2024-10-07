@@ -17,9 +17,6 @@ const (
 	VIEW_DEFAULT = iota
 	VIEW_CONFIG_EXISTS
 	VIEW_ERROR
-
-	stateShowDefault state = iota
-	stateShowWarning
 )
 
 var (
@@ -36,30 +33,17 @@ var (
 	ErrExist = errors.New("file already exists")
 )
 
-type state int
-
 func usage() {
 	fmt.Fprint(os.Stderr, "Usage:\n")
 	fmt.Fprint(os.Stderr, "  kubecfg [PATH] <flags>\n\n")
 
 	title := "kubecfg Kubernetes kubconfig manager"
-	fmt.Fprint(os.Stderr, title+"\n\n")
+	fmt.Fprintf(os.Stderr, "%s\n\n", title)
 	desc := "List, search and switch between multiple kubeconfig files within a directory"
 	if desc != "" {
-		fmt.Fprintf(os.Stderr, desc+"\n\n")
+		fmt.Fprintf(os.Stderr, "%s\n\n", desc)
 	}
 	fmt.Fprintln(os.Stderr, pflag.CommandLine.FlagUsages())
-}
-
-func parseArgs() (string, error) {
-	if len(os.Args) >= 2 {
-		return os.Args[1], nil
-	}
-	h, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return path.Join(h, ".kube/"), nil
 }
 
 func main() {

@@ -58,9 +58,7 @@ func (c *Cfg) readInKubeConfig() error {
 		if err != nil {
 			continue
 		}
-		for _, match := range matches {
-			kubeConfigs = append(kubeConfigs, match)
-		}
+		kubeConfigs = append(kubeConfigs, matches...)
 	}
 
 	for _, kubeConfig := range kubeConfigs {
