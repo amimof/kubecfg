@@ -54,6 +54,8 @@ func main() {
 	}
 	kubeconfig := pflag.StringP("dir", "d", path.Join(h, ".kube/config"), "The symlink kubeconfig")
 	globs := pflag.StringSliceP("glob", "g", []string{path.Join(h, ".kube/*.yaml")}, "List files matching a pattern to include. This flag can be used multiple times.")
+	remove := pflag.BoolP("remove", "r", false, "Removes a context and it's referenced users and clusters")
+	prune := pflag.BoolP("prune", "p", false, "Prunes orphaned users & clusters from kubeconfig")
 	showver := pflag.Bool("version", false, "Print version")
 	pflag.Usage = usage
 
@@ -74,7 +76,23 @@ func main() {
 		return
 	}
 
-	if err = c.Run(); err != nil {
+	// Remove operation
+	if *remove {
+		if err = c.Delete(); err != nil {
+			fmt.Println(err)
+		}
+		return
+	}
+
+	// Pune operation
+	if *prune {
+		if err = c.Prune(); err != nil {
+			fmt.Println(err)
+		}
+		return
+	}
+
+	if err = c.Set(); err != nil {
 		fmt.Println(err)
 	}
 }
