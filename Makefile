@@ -48,7 +48,10 @@ $(TBIN)/%: | $(TBIN) ; $(info $(M) building $(PACKAGE))
 	   #rm -rf $$tmp ; exit $$ret
 
 GOCILINT = $(TBIN)/golangci-lint
-$(TBIN)/golangci-lint: PACKAGE=github.com/golangci/golangci-lint/cmd/golangci-lint@v1.61.0
+$(TBIN)/golangci-lint: PACKAGE=github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+
+GOLICENSES = $(TBIN)/go-licenses
+$(TBIN)/go-licenses: PACKAGE=github.com/google/go-licenses/v2@v2.0.1
 
 # Tests
 .PHONY: lint
@@ -79,6 +82,22 @@ benchmark: ; $(info $(M) running go benchmark test) @ ## Benchmark tests to exam
 coverage: ; $(info $(M) running go coverage) @ ## Runs tests and generates code coverage report at ./test/coverage.out
 	$Q mkdir -p $(CURDIR)/test/
 	$Q $(GO) test -coverprofile="$(CURDIR)/test/coverage.out" $(PKGS)
+
+.PHONY: license-report
+license-report: | $(GOLICENSES) ## Analyzes go dependencies and prints the result as CSV
+	@echo "$(M) running license report"
+	$Q $(GOLICENSES) report ./...
+
+.PHONY: license-check
+license-check: | $(GOLICENSES) ## Checks whether licenses for a package are not allowed
+	@echo "$(M) running license check"
+	$Q $(GOLICENSES) check ./... --allowed_licenses="Unlicense,ISC,MPL-2.0,BSD-2-Clause,BSD-3-Clause,MIT,Apache-2.0"
+
+.PHONY: license
+license: ## Runs license-check, license-report and license-save
+	@echo "$(M) running license targets"
+	$Q $(MAKE) license-check
+	$Q $(MAKE) license-report
 
 # Misc
 .PHONY: help

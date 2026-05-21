@@ -71,7 +71,6 @@ func (r newItemModel) View() string {
 }
 
 func (r newItemModel) Init() tea.Cmd {
-
 	return textinput.Blink
 }
 
@@ -87,7 +86,7 @@ users: []
 	if _, err := os.Stat(p); !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("file %s already exists", p)
 	}
-	err := os.WriteFile(p, body, 0666)
+	err := os.WriteFile(p, body, 0o666)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +98,11 @@ users: []
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			panic(err)
+		}
+	}()
 	info, err := f.Stat()
 	if err != nil {
 		return nil, err

@@ -106,13 +106,21 @@ func (m *BackupConfigView) copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer srcFile.Close()
+	defer func() {
+		if err := srcFile.Close(); err != nil {
+			panic(err)
+		}
+	}()
 
 	dstFile, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+	defer func() {
+		if err := dstFile.Close(); err != nil {
+			panic(err)
+		}
+	}()
 
 	_, err = io.Copy(dstFile, srcFile)
 	if err != nil {
