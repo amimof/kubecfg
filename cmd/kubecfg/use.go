@@ -26,7 +26,6 @@ func newUseCmd() *cobra.Command {
 		Use:          "use [NAME]",
 		Short:        "use workspace",
 		Long:         `use workspace`,
-		Aliases:      []string{"ws"},
 		Args:         cobra.MaximumNArgs(1),
 		SilenceUsage: true,
 		RunE: withConfig(func(cmd *cobra.Command, args []string) error {

@@ -32,7 +32,7 @@ kubecfg: | $(BIN) ; $(info $(M) building executable to $(BUILDPATH)) @ ## Build 
 	$Q $(GO) build \
 		-tags release \
 		-ldflags '-X main.VERSION=${VERSION} -X main.COMMIT=${COMMIT} -X main.BRANCH=${BRANCH} -X main.GOVERSION=${GOVERSION}' \
-		-o $(BUILDPATH) cmd/main.go
+		-o $(BUILDPATH) ./cmd/kubecfg
 
 # Tools
 $(BIN):

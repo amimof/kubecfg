@@ -18,6 +18,6 @@ func newVersionCmd() *cobra.Command {
 }
 
 func runVersionCmd() error {
-	fmt.Printf("Version: %s\nCommit: %s\nBRANCH: %s\nGoVersion: %s\n", VERSION, COMMIT, BRANCH, GOVERSION)
+	fmt.Printf("Version: %s\nCommit: %s\nBranch: %s\nGoVersion: %s\n", VERSION, COMMIT, BRANCH, GOVERSION)
 	return nil
 }
