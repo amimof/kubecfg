@@ -76,6 +76,9 @@ func runLoginCmd(workspaceName, kubeconfigName, contextName string) error {
 		if err := tmpFile.Close(); err != nil {
 			panic(err)
 		}
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			panic(err)
+		}
 	}()
 
 	// Create command
