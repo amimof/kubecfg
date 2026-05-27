@@ -59,6 +59,8 @@ If you manage more than one cluster, `~/.kube` tends to turn into a junk drawer 
    - Run `kubecfg use homelab/mainframe`: Use specific kubeconfig in specific workspace.
    - Run `kubecfg use mainframe --workspace homelab`: Same as previous command.
 
+> See [Examples](/examples/) for more information on how to configure kubecfg in various ways
+
 # Highlights
 - Declarative kubeconfig management from a single YAML file
 - Named workspaces for grouping related kubeconfigs
