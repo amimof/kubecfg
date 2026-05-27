@@ -7,8 +7,57 @@
 # What It Does
 If you manage more than one cluster, `~/.kube` tends to turn into a junk drawer pretty quickly. `kubecfg` gives that sprawl some structure without adding much ceremony. It groups kubeconfigs into workspaces, lets you select them interactively or directly, and can refresh credentials by calling an external login command and importing the resulting auth info.
 
-# Why Use It
 `kubecfg` is useful when you want one source of truth for cluster access instead of hand-editing kubeconfigs or keeping a pile of half-documented files around. It fits well when different environments need different output files, different default contexts, or different login flows, but you still want the result to be plain kubeconfig files on disk.
+
+# Quickstart
+
+1. Install `kubecfg` from GitHub [Releases](https://github.com/amimof/kubecfg/releases)
+   
+   ```bash
+   curl -LO https://github.com/amimof/kubecfg/releases/download/v1.0.0-beta.4/kubecfg-linux-amd64
+   sudo install -m 755 kubecfg-linux-amd64 /usr/local/bin/kubecfg
+   ```
+
+   > **Make sure you download the precompiled binary for your OS and Platform**
+
+2. Create `~/.config/kubecfg.yaml`. Here's an example configuration
+
+   ```yaml
+   workspaces:
+     homelab:
+       description: "Homelab"
+       kubeconfigs:
+       - mainframe
+
+   kubeconfigs:
+     mainframe:
+       path: "@mainframe.yaml"
+
+       clusters:
+         mainframe-dev:
+           name: mainframe-dev
+           server: https://mainframe-dev.amimof.com
+
+       auth_infos:
+         admin:
+           name: admin
+           exec:
+             command: oidc-login
+             args: ["get-token", "--issuer-url", "https://issuer.example.com"]
+
+       contexts:
+         mainframe:
+           name: mainframe-dev
+           cluster: mainframe-dev
+           authinfo: admin
+   ```
+
+3. Start using kubecfg. A few examples on what you can do 
+
+   - `kubecfg use`: List workspaces in a fuzzy finder (fzf). Selecting and pressing enter will synthesize a kubeconfig derived from kubecfg.yaml and create a symlink to `~/.kube/config`. Now you can use `kubectl` as usual.
+   - Run `kubecfg use mainframe`: Use specific kubeconfig in default workspace set by `default_workspace`.
+   - Run `kubecfg use homelab/mainframe`: Use specific kubeconfig in specific workspace.
+   - Run `kubecfg use mainframe --workspace homelab`: Same as previous command.
 
 # Highlights
 - Declarative kubeconfig management from a single YAML file
