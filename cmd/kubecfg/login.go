@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/amimof/kubecfg/pkg/command"
-	"github.com/amimof/kubecfg/pkg/config"
 	"github.com/amimof/kubecfg/pkg/service"
 	"github.com/spf13/cobra"
 )
@@ -19,25 +18,32 @@ var (
 )
 
 func newLoginCmd() *cobra.Command {
-	var workspaceName string
+	var (
+		workspaceName string
+		identityFile  string
+	)
 	cmd := &cobra.Command{
-		Use:          "login [KUBECONFIG] [CONTEXT]",
+		Use:          "login [KUBECONFIG] [CONTEXT]",
 		Short:        "login to cluster in provided cluster",
 		Long:         `login to cluster in provided cluster and generate kubeconfig with credentials`,
 		Args:         cobra.ExactArgs(2),
 		SilenceUsage: true,
 		RunE: withConfig(func(cmd *cobra.Command, args []string) error {
-			return runLoginCmd(workspaceName, args[0], args[1])
+			return runLoginCmd(workspaceName, args[0], args[1], identityFile)
 		}),
 	}
 
 	cmd.PersistentFlags().StringVarP(&workspaceName, "workspace", "w", "", "Workspace")
+	cmd.PersistentFlags().StringVar(&identityFile, "identity-file", "", "Age identity used to decrypt fields in configuration")
 
 	return cmd
 }
 
-func runLoginCmd(workspaceName, kubeconfigName, contextName string) error {
-	compiler := config.NewCompiler(baseDir)
+func runLoginCmd(workspaceName, kubeconfigName, contextName, identityFile string) error {
+	compiler, err := newCompilerWithOptionalDecryptor(&cfg, identityFile)
+	if err != nil {
+		return err
+	}
 
 	runtime, err := compiler.Compile(&cfg)
 	if err != nil {

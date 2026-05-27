@@ -128,6 +128,7 @@ func main() {
 	rootCmd.AddCommand(newWorkspacesCmd())
 	rootCmd.AddCommand(newUseCmd())
 	rootCmd.AddCommand(newLoginCmd())
+	rootCmd.AddCommand(newEncryptCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

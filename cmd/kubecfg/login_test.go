@@ -36,7 +36,7 @@ func TestRunLoginCmdStreamsSubprocessOutputAndImportsAuthInfo(t *testing.T) {
 	loginStdout = &stdout
 	loginStderr = &stderr
 
-	err := runLoginCmd("work", "vgr", "ctx1")
+	err := runLoginCmd("work", "vgr", "ctx1", "")
 	require.NoError(t, err)
 	require.Greater(t, stdout.Len(), 64*1024)
 	require.Greater(t, stderr.Len(), 64*1024)
@@ -80,9 +80,37 @@ func TestRunLoginCmdDoesNotMutateCredentialSourceEnv(t *testing.T) {
 	require.True(t, ok)
 	require.NotContains(t, source.Env, "KUBECONFIG")
 
-	err = runLoginCmd("work", "vgr", "ctx1")
+	err = runLoginCmd("work", "vgr", "ctx1", "")
 	require.NoError(t, err)
 	require.NotContains(t, source.Env, "KUBECONFIG")
+}
+
+func TestRunLoginCmdDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
+	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
+	identityFile, encryptedToken := writeAgeIdentityAndEncryptedToken(t, "login-token")
+
+	originalCfg := cfg
+	originalBaseDir := baseDir
+	originalStdout := loginStdout
+	originalStderr := loginStderr
+	t.Cleanup(func() {
+		cfg = originalCfg
+		baseDir = originalBaseDir
+		loginStdout = originalStdout
+		loginStderr = originalStderr
+	})
+
+	cfg = newLoginCommandEncryptedTestConfig(targetPath, encryptedToken)
+	baseDir = filepath.Dir(targetPath)
+	loginStdout = io.Discard
+	loginStderr = io.Discard
+
+	err := runLoginCmd("work", "vgr", "ctx1", identityFile)
+	require.NoError(t, err)
+
+	loaded, err := clientcmd.LoadFromFile(targetPath)
+	require.NoError(t, err)
+	require.Equal(t, "imported-token", loaded.AuthInfos["login-user"].Token)
 }
 
 func TestHelperProcessLoginCommand(t *testing.T) {
@@ -166,4 +194,10 @@ func newLoginCommandTestConfig(targetPath string) config.Config {
 			},
 		},
 	}
+}
+
+func newLoginCommandEncryptedTestConfig(targetPath, encryptedToken string) config.Config {
+	cfg := newLoginCommandTestConfig(targetPath)
+	cfg.Kubeconfigs["vgr"].AuthInfos["login-user"].EncryptedToken = encryptedToken
+	return cfg
 }

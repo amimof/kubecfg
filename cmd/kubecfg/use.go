@@ -28,6 +28,7 @@ func newUseCmd() *cobra.Command {
 	var (
 		workspaceName string
 		skipLogin     bool
+		identityFile  string
 	)
 
 	cmd := &cobra.Command{
@@ -38,13 +39,14 @@ func newUseCmd() *cobra.Command {
 		SilenceUsage: true,
 		RunE: withConfig(func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return runUseCmdFzf(workspaceName, skipLogin)
+				return runUseCmdFzf(workspaceName, skipLogin, identityFile)
 			}
-			return runUseCmd(workspaceName, args[0], skipLogin)
+			return runUseCmd(workspaceName, args[0], skipLogin, identityFile)
 		}),
 	}
 
 	cmd.PersistentFlags().StringVarP(&workspaceName, "workspace", "w", "", "Workspace")
+	cmd.PersistentFlags().StringVar(&identityFile, "identity-file", "", "Age identity used to decrypt fields in configuration")
 	cmd.PersistentFlags().BoolVar(&skipLogin, "skip-login", false, "Skip execution of login flow prior to kubeconfig rendering")
 
 	return cmd
@@ -75,8 +77,11 @@ func setConfig(name string) error {
 	return os.Symlink(name, path.Join(baseDir, "config"))
 }
 
-func runUseCmd(workspaceName, kubeconfigName string, skipLogin bool) error {
-	compiler := config.NewCompiler(baseDir)
+func runUseCmd(workspaceName, kubeconfigName string, skipLogin bool, identityFile string) error {
+	compiler, err := newCompilerWithOptionalDecryptor(&cfg, identityFile)
+	if err != nil {
+		return err
+	}
 
 	runtime, err := compiler.Compile(&cfg)
 	if err != nil {
@@ -128,8 +133,11 @@ func runUseCmd(workspaceName, kubeconfigName string, skipLogin bool) error {
 	return nil
 }
 
-func runUseCmdFzf(workspaceName string, skipLogin bool) error {
-	compiler := config.NewCompiler(baseDir)
+func runUseCmdFzf(workspaceName string, skipLogin bool, identityFile string) error {
+	compiler, err := newCompilerWithOptionalDecryptor(&cfg, identityFile)
+	if err != nil {
+		return err
+	}
 
 	runtime, err := compiler.Compile(&cfg)
 	if err != nil {

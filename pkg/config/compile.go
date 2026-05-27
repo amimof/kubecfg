@@ -9,13 +9,27 @@ import (
 )
 
 type Compiler struct {
-	BaseDir string
+	BaseDir   string
+	Decryptor SecretDecryptor
 }
 
-func NewCompiler(baseDir string) *Compiler {
-	return &Compiler{
+type CompilerOption func(*Compiler)
+
+func WithDecryptor(d SecretDecryptor) CompilerOption {
+	return func(c *Compiler) {
+		c.Decryptor = d
+	}
+}
+
+func NewCompiler(baseDir string, opts ...CompilerOption) *Compiler {
+	c := &Compiler{
 		BaseDir: baseDir,
 	}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 func (c *Compiler) Compile(cfg *Config) (*RuntimeConfig, error) {
@@ -77,7 +91,7 @@ func (c *Compiler) compileKubeconfigs(rt *RuntimeConfig, cfg *Config) error {
 			return err
 		}
 
-		if err := compileAuthInfos(rkc, kubeconfig); err != nil {
+		if err := c.compileAuthInfos(rkc, kubeconfig); err != nil {
 			return err
 		}
 
@@ -137,38 +151,15 @@ func resolveExecEnvVars(src []ExecEnvVar) []api.ExecEnvVar {
 	return execEnvVar
 }
 
-func compileAuthInfos(rkc *RuntimeKubeconfig, kc *Kubeconfig) error {
+func (c *Compiler) compileAuthInfos(rkc *RuntimeKubeconfig, kc *Kubeconfig) error {
 	for name, ai := range kc.AuthInfos {
-		if ai == nil {
-			return fmt.Errorf("kubeconfigs.%s.authinfos.%s is nil", rkc.Name, name)
+		compiler := &AuthInfoCompiler{Decryptor: c.Decryptor}
+		rai, err := compiler.Compile(name, ai)
+		if err != nil {
+			return err
 		}
-
-		rkc.AuthInfos[name] = &RuntimeAuthInfo{
-			Name: name,
-			AuthInfo: &api.AuthInfo{
-				LocationOfOrigin:      ai.LocationOfOrigin,
-				ClientCertificate:     ai.ClientCertificate,
-				ClientCertificateData: ai.ClientCertificateData,
-				ClientKey:             ai.ClientKey,
-				ClientKeyData:         ai.ClientKeyData,
-				Token:                 ai.Token,
-
-				TokenFile:      ai.TokenFile,
-				Impersonate:    ai.Impersonate,
-				ImpersonateUID: ai.ImpersonateUID,
-
-				ImpersonateGroups:    ai.ImpersonateGroups,
-				ImpersonateUserExtra: ai.ImpersonateUserExtra,
-				Username:             ai.Username,
-				Password:             ai.Password,
-				AuthProvider:         (*api.AuthProviderConfig)(ai.AuthProvider),
-				Exec:                 resolveAuthInfosExec(ai.Exec),
-				Extensions:           ai.Extensions,
-			},
-			CredentialSource: resolveCredentialSource(ai.Login),
-		}
+		rkc.AuthInfos[name] = rai
 	}
-
 	return nil
 }
 
@@ -497,4 +488,98 @@ func firstNonEmpty(values ...string) string {
 	}
 
 	return ""
+}
+
+type AuthInfoCompiler struct {
+	Decryptor SecretDecryptor
+}
+
+type SecretDecryptor interface {
+	DecryptString(ciphertext string) (string, error)
+	DecryptBytes(ciphertext []byte) ([]byte, error)
+}
+
+func (c *AuthInfoCompiler) Compile(name string, in *AuthInfo) (*RuntimeAuthInfo, error) {
+	if in == nil {
+		return nil, fmt.Errorf("authinfo %q is nil", name)
+	}
+
+	if in.HasEncryptedFields() && c.Decryptor == nil {
+		return nil, fmt.Errorf("authinfo %q contains encrypted fields; provide --identity-file or a passphrase", name)
+	}
+
+	rai := &RuntimeAuthInfo{
+		Name: name,
+		AuthInfo: &api.AuthInfo{
+			LocationOfOrigin:      in.LocationOfOrigin,
+			ClientCertificate:     in.ClientCertificate,
+			ClientCertificateData: in.ClientCertificateData,
+			ClientKey:             in.ClientKey,
+			ClientKeyData:         in.ClientKeyData,
+			Token:                 in.Token,
+
+			TokenFile:      in.TokenFile,
+			Impersonate:    in.Impersonate,
+			ImpersonateUID: in.ImpersonateUID,
+
+			ImpersonateGroups:    in.ImpersonateGroups,
+			ImpersonateUserExtra: in.ImpersonateUserExtra,
+			Username:             in.Username,
+			Password:             in.Password,
+			AuthProvider:         (*api.AuthProviderConfig)(in.AuthProvider),
+			Exec:                 resolveAuthInfosExec(in.Exec),
+			Extensions:           in.Extensions,
+		},
+		CredentialSource: resolveCredentialSource(in.Login),
+	}
+
+	if in.EncryptedToken != "" {
+		token, err := c.Decryptor.DecryptString(in.EncryptedToken)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt authinfo %q token: %w", name, err)
+		}
+		rai.AuthInfo.Token = token
+	}
+
+	if in.EncryptedPassword != "" {
+		password, err := c.Decryptor.DecryptString(in.EncryptedPassword)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt authinfo %q password: %w", name, err)
+		}
+		rai.AuthInfo.Password = password
+	}
+
+	if len(in.EncryptedClientKeyData) > 0 {
+		data, err := c.Decryptor.DecryptBytes(in.EncryptedClientKeyData)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt authinfo %q client key data: %w", name, err)
+		}
+		rai.AuthInfo.ClientKeyData = data
+	}
+
+	if len(in.EncryptedClientCertificateData) > 0 {
+		data, err := c.Decryptor.DecryptBytes(in.EncryptedClientCertificateData)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt authinfo %q client certificate data: %w", name, err)
+		}
+		rai.AuthInfo.ClientCertificateData = data
+	}
+
+	if len(in.EncryptedClientKey) > 0 {
+		data, err := c.Decryptor.DecryptBytes(in.EncryptedClientKey)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt authinfo %q client key: %w", name, err)
+		}
+		rai.AuthInfo.ClientKey = string(data)
+	}
+
+	if len(in.EncryptedClientCertificate) > 0 {
+		data, err := c.Decryptor.DecryptBytes(in.EncryptedClientCertificate)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt authinfo %q client certificate: %w", name, err)
+		}
+		rai.AuthInfo.ClientCertificate = string(data)
+	}
+
+	return rai, nil
 }
