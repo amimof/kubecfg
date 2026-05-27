@@ -40,13 +40,49 @@ func TestRunLoginCmdStreamsSubprocessOutputAndImportsAuthInfo(t *testing.T) {
 	require.NoError(t, err)
 	require.Greater(t, stdout.Len(), 64*1024)
 	require.Greater(t, stderr.Len(), 64*1024)
+	require.Contains(t, stdout.String(), "stdout-data")
+	require.Contains(t, stderr.String(), "stderr-data")
 
 	loaded, err := clientcmd.LoadFromFile(targetPath)
 	require.NoError(t, err)
 
-	authInfo, ok := loaded.AuthInfos["ctx1"]
+	authInfo, ok := loaded.AuthInfos["login-user"]
 	require.True(t, ok)
 	require.Equal(t, "imported-token", authInfo.Token)
+	require.Equal(t, "login-user", loaded.Contexts["ctx1"].AuthInfo)
+}
+
+func TestRunLoginCmdDoesNotMutateCredentialSourceEnv(t *testing.T) {
+	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
+
+	originalCfg := cfg
+	originalBaseDir := baseDir
+	originalStdout := loginStdout
+	originalStderr := loginStderr
+	t.Cleanup(func() {
+		cfg = originalCfg
+		baseDir = originalBaseDir
+		loginStdout = originalStdout
+		loginStderr = originalStderr
+	})
+
+	cfg = newLoginCommandTestConfig(targetPath)
+	baseDir = filepath.Dir(targetPath)
+	loginStdout = io.Discard
+	loginStderr = io.Discard
+
+	compiler := config.NewCompiler(baseDir)
+	runtime, err := compiler.Compile(&cfg)
+	require.NoError(t, err)
+
+	auth := runtime.Workspace("work").Kubeconfig("vgr").Context("ctx1").AuthInfo
+	source, ok := auth.CredentialSource.(*config.RuntimeLoginCredentialSource)
+	require.True(t, ok)
+	require.NotContains(t, source.Env, "KUBECONFIG")
+
+	err = runLoginCmd("work", "vgr", "ctx1")
+	require.NoError(t, err)
+	require.NotContains(t, source.Env, "KUBECONFIG")
 }
 
 func TestHelperProcessLoginCommand(t *testing.T) {
