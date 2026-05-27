@@ -122,7 +122,7 @@ type RuntimeAuthInfo struct {
 
 	AuthInfo *api.AuthInfo
 
-	CredentialSource *RuntimeCredentialSource
+	CredentialSource RuntimeCredentialSource
 }
 
 type RuntimeContext struct {
@@ -146,14 +146,31 @@ type RuntimeContextRef struct {
 	Context    *RuntimeContext
 }
 
-type RuntimeCredentialSource struct {
+type RuntimeCredentialSource interface {
+	Type() string
+}
+
+type CredentialSourceType string
+
+const (
+	CredentialSourceNone  CredentialSourceType = "none"
+	CredentialSourceExec  CredentialSourceType = "exec"
+	CredentialSourceLogin CredentialSourceType = "login"
+	CredentialSourceToken CredentialSourceType = "token"
+)
+
+type RuntimeLoginCredentialSource struct {
 	Provider string
 
 	Command string
 	Args    []string
-	Env     []string
+	Env     map[string]string
 
 	Import RuntimeLoginImport
+}
+
+func (e *RuntimeLoginCredentialSource) Type() string {
+	return string(CredentialSourceLogin)
 }
 
 type RuntimeLoginImport struct {

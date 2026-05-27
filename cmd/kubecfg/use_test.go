@@ -127,6 +127,42 @@ func TestRunUseCmdFzfNoSelectionIsNoOp(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
+func TestRunUseCmdFzfUpdatesActiveConfigSymlink(t *testing.T) {
+	t.Setenv("FZF_DEFAULT_OPTS", "")
+	t.Setenv("FZF_DEFAULT_OPTS_FILE", "")
+
+	tmpDir := t.TempDir()
+	targetPath := filepath.Join(tmpDir, "target-kubeconfig.yaml")
+
+	originalCfg := cfg
+	originalBaseDir := baseDir
+	originalFzfRun := fzfRun
+	t.Cleanup(func() {
+		cfg = originalCfg
+		baseDir = originalBaseDir
+		fzfRun = originalFzfRun
+	})
+
+	cfg = newUseCommandTestConfig(targetPath)
+	baseDir = tmpDir
+	fzfRun = func(options *fzf.Options) (int, error) {
+		for range options.Input {
+		}
+		options.Output <- "work/vgr"
+		return fzf.ExitOk, nil
+	}
+
+	err := runUseCmdFzf("")
+	require.NoError(t, err)
+
+	linkPath := filepath.Join(baseDir, "config")
+	linkedTo, err := os.Readlink(linkPath)
+	require.NoError(t, err)
+	require.Equal(t, targetPath, linkedTo)
+	_, err = os.Stat(targetPath)
+	require.NoError(t, err)
+}
+
 func TestWriteKubeconfigSetsSecurePermissions(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("permission bits are not reliable on Windows")

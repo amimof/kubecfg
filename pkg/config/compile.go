@@ -172,15 +172,29 @@ func compileAuthInfos(rkc *RuntimeKubeconfig, kc *Kubeconfig) error {
 	return nil
 }
 
-func resolveCredentialSource(l *LoginAuth) *RuntimeCredentialSource {
+func envSliceToMap(env []string) map[string]string {
+	m := make(map[string]string, len(env))
+
+	for _, e := range env {
+		key, value, ok := strings.Cut(e, "=")
+		if !ok {
+			continue
+		}
+		m[key] = value
+	}
+
+	return m
+}
+
+func resolveCredentialSource(l *LoginAuth) RuntimeCredentialSource {
 	if l == nil {
 		return nil
 	}
 
-	return &RuntimeCredentialSource{
+	return &RuntimeLoginCredentialSource{
 		Command: l.Command,
 		Args:    l.Args,
-		Env:     l.Env,
+		Env:     envSliceToMap(l.Env),
 		Import: RuntimeLoginImport{
 			Context: l.CopyFromContextName,
 		},

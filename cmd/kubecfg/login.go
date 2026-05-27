@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"path"
 	"time"
 
-	"k8s.io/client-go/tools/clientcmd"
-
+	"github.com/amimof/kubecfg/pkg/command"
 	"github.com/amimof/kubecfg/pkg/config"
+	"github.com/amimof/kubecfg/pkg/service"
 	"github.com/spf13/cobra"
 )
 
@@ -62,52 +60,21 @@ func runLoginCmd(workspaceName, kubeconfigName, contextName string) error {
 
 	// Find the credential source using workspace and kubeconfig name
 	rk := runtime.Workspace(workspaceName).Kubeconfig(kubeconfigName)
-	credSource := rk.Contexts[contextName].AuthInfo.CredentialSource
+	aui := rk.Contexts[contextName].AuthInfo
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Create temporary file where kubeconfig is written to by the exec command
-	tmpFile, err := os.CreateTemp("/tmp", "kubecfg-login")
+	runner := command.NewExecCommandRunner()
+	loginService := service.LoginService{Runner: runner, Stdout: loginStdout, Stderr: loginStderr}
+	newAuth, err := loginService.Login(ctx, aui)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := tmpFile.Close(); err != nil {
-			panic(err)
-		}
-		if err := os.Remove(tmpFile.Name()); err != nil {
-			panic(err)
-		}
-	}()
-
-	// Create command
-	c := exec.CommandContext(ctx, credSource.Command, credSource.Args...)
-	c.Env = credSource.Env
-	c.Env = append(c.Env, fmt.Sprintf("%s=%s", "KUBECONFIG", path.Join(tmpFile.Name())))
-	c.Stdout = loginStdout
-	c.Stderr = loginStderr
-
-	// Run command and stream output to avoid pipe deadlocks.
-	if err := c.Run(); err != nil {
-		return err
-	}
-
-	// Read temporary kubeconfig to extract token
-	kubeconfig, err := clientcmd.LoadFromFile(tmpFile.Name())
-	if err != nil {
-		return err
-	}
-
-	if _, ok := kubeconfig.Contexts[credSource.Import.Context]; !ok {
-		return fmt.Errorf("could not import auth info from context %s", credSource.Import.Context)
-	}
-
-	authInfoRef := kubeconfig.Contexts[credSource.Import.Context].AuthInfo
-	authInfo := kubeconfig.AuthInfos[authInfoRef]
 
 	rkContextRef := rk.Context(contextName)
-	rk.Config.AuthInfos[rkContextRef.Name] = authInfo
+	rk.Config.AuthInfos[rkContextRef.AuthInfo.Name] = newAuth
+	rk.Config.CurrentContext = contextName
 
 	if err := writeKubeconfig(rk.Path, *rk.Config); err != nil {
 		return err

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/amimof/kubecfg/pkg/config"
@@ -52,6 +53,20 @@ func writeKubeconfig(path string, kubeconfig api.Config) error {
 	return os.Chmod(path, 0o600)
 }
 
+// setConfig creates a new symlink to a kubeconfigfile overwriting any existing one
+func setConfig(name string) error {
+	dst := path.Join(baseDir, "config")
+	// Remove existing symlink to config so we don't run into an error
+	if _, err := os.Stat(dst); !os.IsNotExist(err) {
+		err := os.Remove(dst)
+		if err != nil {
+			return err
+		}
+	}
+	// Create the symlink to config
+	return os.Symlink(name, path.Join(baseDir, "config"))
+}
+
 func runUseCmd(workspaceName, kubeconfigName string) error {
 	compiler := config.NewCompiler(baseDir)
 
@@ -85,6 +100,11 @@ func runUseCmd(workspaceName, kubeconfigName string) error {
 	if err := writeKubeconfig(rk.Path, *rk.Config); err != nil {
 		return err
 	}
+
+	if err := setConfig(rk.Path); err != nil {
+		return err
+	}
+
 	fmt.Printf("Using kubeconfig: %s/%s\n", workspaceName, kubeconfigName)
 	return nil
 }
@@ -107,6 +127,9 @@ func runUseCmdFzf(workspaceName string) error {
 
 	rk := runtime.Workspace(workspace).Kubeconfig(selected)
 	if err := writeKubeconfig(rk.Path, *rk.Config); err != nil {
+		return err
+	}
+	if err := setConfig(rk.Path); err != nil {
 		return err
 	}
 	fmt.Printf("Using kubeconfig: %s/%s\n", workspace, selected)
