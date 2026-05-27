@@ -120,7 +120,7 @@ func TestRunUseCmdFzfNoSelectionIsNoOp(t *testing.T) {
 		return fzf.ExitNoMatch, nil
 	}
 
-	err := runUseCmdFzf("")
+	err := runUseCmdFzf("", false)
 	require.NoError(t, err)
 
 	_, err = os.Stat(targetPath)
@@ -152,7 +152,7 @@ func TestRunUseCmdFzfUpdatesActiveConfigSymlink(t *testing.T) {
 		return fzf.ExitOk, nil
 	}
 
-	err := runUseCmdFzf("")
+	err := runUseCmdFzf("", false)
 	require.NoError(t, err)
 
 	linkPath := filepath.Join(baseDir, "config")
