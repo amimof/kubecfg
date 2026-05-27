@@ -97,6 +97,11 @@ func runUseCmd(workspaceName, kubeconfigName string) error {
 	}
 
 	rk := runtime.Workspace(workspaceName).Kubeconfig(kubeconfigName)
+
+	if rk.Config.CurrentContext == "" {
+		rk.Config.CurrentContext = rk.Name
+	}
+
 	if err := writeKubeconfig(rk.Path, *rk.Config); err != nil {
 		return err
 	}
@@ -126,6 +131,11 @@ func runUseCmdFzf(workspaceName string) error {
 	}
 
 	rk := runtime.Workspace(workspace).Kubeconfig(selected)
+
+	if rk.Config.CurrentContext == "" {
+		rk.Config.CurrentContext = rk.Name
+	}
+
 	if err := writeKubeconfig(rk.Path, *rk.Config); err != nil {
 		return err
 	}

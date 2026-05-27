@@ -20,7 +20,7 @@ If you manage more than one cluster, `~/.kube` tends to turn into a junk drawer 
 
    > **Make sure you download the precompiled binary for your OS and Platform**
 
-2. Create `~/.config/kubecfg.yaml`. Here's an example confiuration
+2. Create `~/.config/kubecfg.yaml`. Here's an example configuration
 
    ```yaml
    workspaces:
