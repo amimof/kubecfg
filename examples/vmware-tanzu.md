@@ -48,4 +48,10 @@ With this configuration you may run the following:
 kubecfg login tanzu supervisor-prod
 ```
 
+If the auth info contains encrypted fields such as `encryptedToken`, provide the age identity used to decrypt them during compile:
+
+```bash
+kubecfg login tanzu supervisor-prod --identity-file ~/.config/kubecfg/age.txt
+```
+
 > NOTE! The login flow is by default executed with `kubecfg use` if the `auth_info` contains a `login` flow.

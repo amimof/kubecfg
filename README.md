@@ -54,10 +54,12 @@ If you manage more than one cluster, `~/.kube` tends to turn into a junk drawer 
 
 3. Start using kubecfg. A few examples on what you can do 
 
-   - `kubecfg use`: List workspaces in a fuzzy finder (fzf). Selecting and pressing enter will synthesize a kubeconfig derived from kubecfg.yaml and create a symlink to `~/.kube/config`. Now you can use `kubectl` as usual.
-   - Run `kubecfg use mainframe`: Use specific kubeconfig in default workspace set by `default_workspace`.
-   - Run `kubecfg use homelab/mainframe`: Use specific kubeconfig in specific workspace.
-   - Run `kubecfg use mainframe --workspace homelab`: Same as previous command.
+    - `kubecfg use`: List workspaces in a fuzzy finder (fzf). Selecting and pressing enter will synthesize a kubeconfig derived from kubecfg.yaml and create a symlink to `~/.kube/config`. Now you can use `kubectl` as usual.
+    - Run `kubecfg use mainframe`: Use specific kubeconfig in default workspace set by `default_workspace`.
+    - Run `kubecfg use homelab/mainframe`: Use specific kubeconfig in specific workspace.
+    - Run `kubecfg use mainframe --workspace homelab`: Same as previous command.
+    - Run `kubecfg use mainframe --identity-file ~/.config/kubecfg/age.txt`: Decrypt `encryptedToken` and other encrypted auth fields during compile.
+    - Run `kubecfg login mainframe mainframe --identity-file ~/.config/kubecfg/age.txt`: Compile encrypted config, then run the login flow and write the rendered kubeconfig.
 
 > See [Examples](/examples/) for more information on how to configure kubecfg in various ways
 
@@ -69,6 +71,7 @@ If you manage more than one cluster, `~/.kube` tends to turn into a junk drawer 
 - External login flow for refreshing credentials on demand
 - Relative kubeconfig paths via `@/` and `--base-dir`
 - Plain files, plain CLI, no daemon or background state
+- Built-in per-field encryption using `age`
 
 # How It Works
 
@@ -78,9 +81,44 @@ When you run `kubecfg`, it reads the YAML config, resolves the selected workspac
 
 The same model applies to credentials. `kubecfg login` can run an external login command, import fresh auth data into the rendered kubeconfig, and write the file back out. The durable definition still lives in the `kubecfg` config; the generated kubeconfig is just the current rendered result.
 
+Encrypted auth fields follow the same rule. You can store values such as `encryptedToken` in `kubecfg.yaml`, keep the age-encrypted payload in source control if needed, and let `kubecfg use` or `kubecfg login` decrypt them during `Compile()`. The rendered kubeconfig on disk still gets the plaintext token that `kubectl` expects.
+
+# Encrypted Fields
+
+Use `kubecfg encrypt` to generate an armored age string and paste it into a camelCase encrypted auth field.
+
+```bash
+kubecfg encrypt --public-key age1...
+```
+
+```yaml
+kubeconfigs:
+  mainframe:
+    path: "@/generated/mainframe.yaml"
+    auth_infos:
+      admin:
+        encryptedToken: |
+          -----BEGIN AGE ENCRYPTED FILE-----
+          ...
+          -----END AGE ENCRYPTED FILE-----
+    contexts:
+      admin:
+        cluster: mainframe
+        authInfo: admin
+```
+
+Render that kubeconfig with either an age identity file or a passphrase-backed age secret:
+
+```bash
+kubecfg use mainframe --identity-file ~/.config/kubecfg/age.txt
+kubecfg login mainframe admin --identity-file ~/.config/kubecfg/age.txt
+```
+
+If both `token` and `encryptedToken` are set, `encryptedToken` wins.
+
 # API Reference
 
-This example is meant to be copied into `kubecfg.yaml` and edited in place. It uses the field spellings the current decoder accepts today. Keep one primary auth mechanism uncommented per `auth_infos.<name>` entry.
+This example is meant to be copied into `kubecfg.yaml` and edited in place. It uses the canonical field spellings accepted by the current decoder. Keep one primary auth mechanism uncommented per `auth_infos.<name>` entry.
 
 ```yaml
 # Config version. The empty in-memory default uses v1.
@@ -168,6 +206,18 @@ kubeconfigs:
       admin:
         # Pick one primary auth mechanism for this auth info.
         token: "<redacted>"
+
+        # Encrypted variants are decrypted during Compile() when you run
+        # `kubecfg use` or `kubecfg login` with `--identity-file` or a
+        # passphrase on stdin.
+        # encryptedToken: |
+        #   -----BEGIN AGE ENCRYPTED FILE-----
+        #   ...
+        #   -----END AGE ENCRYPTED FILE-----
+        # encryptedPassword: |
+        #   -----BEGIN AGE ENCRYPTED FILE-----
+        #   ...
+        #   -----END AGE ENCRYPTED FILE-----
 
         # Other primary auth mechanisms:
         # tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token

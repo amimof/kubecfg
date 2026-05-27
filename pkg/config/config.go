@@ -45,22 +45,28 @@ type Cluster struct {
 type AuthInfo struct {
 	Login *LoginAuth `mapstructure:"login" json:"login" yaml:"login"`
 
-	LocationOfOrigin      string
-	ClientCertificate     string                    `json:"client-certificate,omitempty"`
-	ClientCertificateData []byte                    `json:"client-certificate-data,omitempty"`
-	ClientKey             string                    `json:"client-key,omitempty"`
-	ClientKeyData         []byte                    `json:"client-key-data,omitempty" datapolicy:"security-key"`
-	Token                 string                    `json:"token,omitempty" datapolicy:"token"`
-	TokenFile             string                    `json:"tokenFile,omitempty"`
-	Impersonate           string                    `json:"act-as,omitempty"`
-	ImpersonateUID        string                    `json:"act-as-uid,omitempty"`
-	ImpersonateGroups     []string                  `json:"act-as-groups,omitempty"`
-	ImpersonateUserExtra  map[string][]string       `json:"act-as-user-extra,omitempty"`
-	Username              string                    `json:"username,omitempty"`
-	Password              string                    `json:"password,omitempty" datapolicy:"password"`
-	AuthProvider          *AuthProviderConfig       `json:"auth-provider,omitempty"`
-	Exec                  *ExecConfig               `json:"exec,omitempty"`
-	Extensions            map[string]runtime.Object `json:"extensions,omitempty"`
+	LocationOfOrigin               string
+	ClientCertificate              string                    `json:"client-certificate,omitempty"`
+	ClientCertificateData          []byte                    `json:"client-certificate-data,omitempty"`
+	EncryptedClientCertificate     []byte                    `mapstructure:"encryptedClientCertificate,omitempty" json:"encryptedClientCertificate,omitempty" yaml:"encryptedClientCertificate,omitempty"`
+	EncryptedClientCertificateData []byte                    `mapstructure:"encryptedClientCertificateData,omitempty" json:"encryptedClientCertificateData,omitempty" yaml:"encryptedClientCertificateData,omitempty"`
+	ClientKey                      string                    `json:"client-key,omitempty"`
+	ClientKeyData                  []byte                    `json:"client-key-data,omitempty" datapolicy:"security-key"`
+	EncryptedClientKey             []byte                    `mapstructure:"encryptedClientKey,omitempty" json:"encryptedClientKey,omitempty" yaml:"encryptedClientKey,omitempty"`
+	EncryptedClientKeyData         []byte                    `mapstructure:"encryptedClientKeyData,omitempty" json:"encryptedClientKeyData,omitempty" yaml:"encryptedClientKeyData,omitempty"`
+	Token                          string                    `json:"token,omitempty" datapolicy:"token"`
+	TokenFile                      string                    `json:"tokenFile,omitempty"`
+	EncryptedToken                 string                    `mapstructure:"encryptedToken,omitempty" json:"encryptedToken,omitempty" yaml:"encryptedToken,omitempty"`
+	Impersonate                    string                    `json:"act-as,omitempty"`
+	ImpersonateUID                 string                    `json:"act-as-uid,omitempty"`
+	ImpersonateGroups              []string                  `json:"act-as-groups,omitempty"`
+	ImpersonateUserExtra           map[string][]string       `json:"act-as-user-extra,omitempty"`
+	Username                       string                    `json:"username,omitempty"`
+	Password                       string                    `json:"password,omitempty" datapolicy:"password"`
+	EncryptedPassword              string                    `mapstructure:"encryptedPassword,omitempty" json:"encryptedPassword,omitempty" yaml:"encryptedPassword,omitempty" datapolicy:"password"`
+	AuthProvider                   *AuthProviderConfig       `json:"auth-provider,omitempty"`
+	Exec                           *ExecConfig               `json:"exec,omitempty"`
+	Extensions                     map[string]runtime.Object `json:"extensions,omitempty"`
 }
 
 type Auth struct {
@@ -153,4 +159,33 @@ func (k *Kubeconfig) Context(name string) *Context {
 		return c
 	}
 	return nil
+}
+
+func (c *Config) HasEncryptedAuthInfos() bool {
+	for _, kubeconfig := range c.Kubeconfigs {
+		if kubeconfig == nil {
+			continue
+		}
+
+		for _, authInfo := range kubeconfig.AuthInfos {
+			if authInfo != nil && authInfo.HasEncryptedFields() {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (a *AuthInfo) HasEncryptedFields() bool {
+	if a == nil {
+		return false
+	}
+
+	return a.EncryptedToken != "" ||
+		a.EncryptedPassword != "" ||
+		len(a.EncryptedClientKeyData) > 0 ||
+		len(a.EncryptedClientCertificateData) > 0 ||
+		len(a.EncryptedClientKey) > 0 ||
+		len(a.EncryptedClientCertificate) > 0
 }

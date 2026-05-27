@@ -1,12 +1,15 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 
+	"filippo.io/age"
 	"github.com/amimof/kubecfg/pkg/config"
+	decryptpkg "github.com/amimof/kubecfg/pkg/decrypt"
 	fzf "github.com/junegunn/fzf/src"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/tools/clientcmd/api"
@@ -120,7 +123,7 @@ func TestRunUseCmdFzfNoSelectionIsNoOp(t *testing.T) {
 		return fzf.ExitNoMatch, nil
 	}
 
-	err := runUseCmdFzf("", false)
+	err := runUseCmdFzf("", false, "")
 	require.NoError(t, err)
 
 	_, err = os.Stat(targetPath)
@@ -152,7 +155,7 @@ func TestRunUseCmdFzfUpdatesActiveConfigSymlink(t *testing.T) {
 		return fzf.ExitOk, nil
 	}
 
-	err := runUseCmdFzf("", false)
+	err := runUseCmdFzf("", false, "")
 	require.NoError(t, err)
 
 	linkPath := filepath.Join(baseDir, "config")
@@ -161,6 +164,63 @@ func TestRunUseCmdFzfUpdatesActiveConfigSymlink(t *testing.T) {
 	require.Equal(t, targetPath, linkedTo)
 	_, err = os.Stat(targetPath)
 	require.NoError(t, err)
+}
+
+func TestRunUseCmdDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
+	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
+	identityFile, encryptedToken := writeAgeIdentityAndEncryptedToken(t, "command-token")
+
+	originalCfg := cfg
+	originalBaseDir := baseDir
+	t.Cleanup(func() {
+		cfg = originalCfg
+		baseDir = originalBaseDir
+	})
+
+	cfg = newEncryptedUseCommandTestConfig(targetPath, encryptedToken)
+	baseDir = filepath.Dir(targetPath)
+
+	err := runUseCmd("work", "vgr", true, identityFile)
+	require.NoError(t, err)
+
+	contents, err := os.ReadFile(targetPath)
+	require.NoError(t, err)
+	require.Contains(t, string(contents), "token: command-token")
+	require.NotContains(t, string(contents), encryptedToken)
+}
+
+func TestRunUseCmdFzfDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
+	t.Setenv("FZF_DEFAULT_OPTS", "")
+	t.Setenv("FZF_DEFAULT_OPTS_FILE", "")
+
+	tmpDir := t.TempDir()
+	targetPath := filepath.Join(tmpDir, "target-kubeconfig.yaml")
+	identityFile, encryptedToken := writeAgeIdentityAndEncryptedToken(t, "fzf-token")
+
+	originalCfg := cfg
+	originalBaseDir := baseDir
+	originalFzfRun := fzfRun
+	t.Cleanup(func() {
+		cfg = originalCfg
+		baseDir = originalBaseDir
+		fzfRun = originalFzfRun
+	})
+
+	cfg = newEncryptedUseCommandTestConfig(targetPath, encryptedToken)
+	baseDir = tmpDir
+	fzfRun = func(options *fzf.Options) (int, error) {
+		for range options.Input {
+		}
+		options.Output <- "work/vgr"
+		return fzf.ExitOk, nil
+	}
+
+	err := runUseCmdFzf("", true, identityFile)
+	require.NoError(t, err)
+
+	contents, err := os.ReadFile(targetPath)
+	require.NoError(t, err)
+	require.Contains(t, string(contents), "token: fzf-token")
 }
 
 func TestWriteKubeconfigSetsSecurePermissions(t *testing.T) {
@@ -242,4 +302,29 @@ func newUseCommandTestConfig(targetPath string) config.Config {
 			},
 		},
 	}
+}
+
+func newEncryptedUseCommandTestConfig(targetPath, encryptedToken string) config.Config {
+	cfg := newUseCommandTestConfig(targetPath)
+	cfg.Kubeconfigs["vgr"].AuthInfos["user"] = &config.AuthInfo{EncryptedToken: encryptedToken}
+	return cfg
+}
+
+func writeAgeIdentityAndEncryptedToken(t *testing.T, plaintext string) (string, string) {
+	t.Helper()
+
+	identity, err := age.GenerateX25519Identity()
+	require.NoError(t, err)
+
+	encryptor, err := decryptpkg.NewAgeEncryptor(identity.Recipient())
+	require.NoError(t, err)
+
+	encrypted, err := encryptor.EncryptString(plaintext)
+	require.NoError(t, err)
+
+	identityFile := filepath.Join(t.TempDir(), "identity.txt")
+	identityContents := fmt.Sprintf("# created: now\n# public key: %s\n%s\n", identity.Recipient(), identity.String())
+	require.NoError(t, os.WriteFile(identityFile, []byte(identityContents), 0o600))
+
+	return identityFile, encrypted
 }
