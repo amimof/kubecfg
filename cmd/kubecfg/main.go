@@ -130,6 +130,7 @@ func main() {
 	rootCmd.AddCommand(newUseCmd())
 	rootCmd.AddCommand(newLoginCmd())
 	rootCmd.AddCommand(newEncryptCmd())
+	rootCmd.AddCommand(newDescribeCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
