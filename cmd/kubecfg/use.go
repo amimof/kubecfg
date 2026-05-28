@@ -32,9 +32,11 @@ func newUseCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:          "use [NAME]",
-		Short:        "use workspace",
-		Long:         `use workspace`,
+		Use:   "use [NAME]",
+		Short: "Select and write a kubeconfig",
+		Long:  `Select a kubeconfig and write it to the base directory.`,
+		Example: `  kubecfg use
+  kubecfg use homelab/mainframe`,
 		Args:         cobra.MaximumNArgs(1),
 		SilenceUsage: true,
 		RunE: withConfig(func(cmd *cobra.Command, args []string) error {

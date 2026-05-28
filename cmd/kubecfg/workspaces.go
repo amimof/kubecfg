@@ -16,8 +16,8 @@ var workspacesStdout io.Writer = os.Stdout
 func newWorkspacesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "workspaces",
-		Short:   "list workspaces",
-		Long:    `list workspaces`,
+		Short:   "List workspaces",
+		Long:    `List the workspaces defined in kubecfg.yaml.`,
 		Aliases: []string{"ws"},
 		Args:    cobra.ExactArgs(0),
 		RunE: withConfig(func(cmd *cobra.Command, args []string) error {

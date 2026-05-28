@@ -42,8 +42,10 @@ var (
 	// Root command
 	rootCmd = cobra.Command{
 		Use:   "kubecfg",
-		Short: "kubecfg Kubernetes kubconfig manager",
-		Long:  "List, search and switch between multiple kubeconfig files within a directory",
+		Short: "Manage kubeconfigs as workspaces",
+		Long:  "Manage kubeconfigs from a single config file.",
+		Example: `  kubecfg workspaces
+  kubecfg use`,
 	}
 )
 

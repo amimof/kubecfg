@@ -19,8 +19,8 @@ func newKubeconfigsCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:          "kubeconfigs",
-		Short:        "list kubeconfigs",
-		Long:         `list kubeconfigs`,
+		Short:        "List kubeconfigs",
+		Long:         `List kubeconfigs from one workspace or all workspaces.`,
 		Args:         cobra.ExactArgs(0),
 		SilenceUsage: true,
 		RunE: withConfig(func(cmd *cobra.Command, args []string) error {

@@ -23,9 +23,11 @@ var (
 func newEncryptCmd() *cobra.Command {
 	var publicKey string
 	cmd := &cobra.Command{
-		Use:          "encrypt [STRING]",
-		Short:        "encrypt a string",
-		Long:         `encrypt any string on the command line, use the output in kubecfg.yaml`,
+		Use:   "encrypt [STRING]",
+		Short: "Encrypt a value for kubecfg.yaml",
+		Long:  `Encrypt a string and print the result for use in kubecfg.yaml.`,
+		Example: `  kubecfg encrypt "secret-value"
+  kubecfg encrypt "secret-value" --public-key age1...`,
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
 		RunE: withConfig(func(cmd *cobra.Command, args []string) error {

@@ -23,9 +23,11 @@ func newLoginCmd() *cobra.Command {
 		identityFile  string
 	)
 	cmd := &cobra.Command{
-		Use:          "login [KUBECONFIG] [CONTEXT]",
-		Short:        "login to cluster in provided cluster",
-		Long:         `login to cluster in provided cluster and generate kubeconfig with credentials`,
+		Use:   "login [KUBECONFIG] [CONTEXT]",
+		Short: "Refresh credentials for a context",
+		Long:  `Run the login flow for a kubeconfig context and write the updated credentials.`,
+		Example: `  kubecfg login mainframe admin
+  kubecfg login mainframe admin --workspace homelab`,
 		Args:         cobra.ExactArgs(2),
 		SilenceUsage: true,
 		RunE: withConfig(func(cmd *cobra.Command, args []string) error {

@@ -16,9 +16,11 @@ func newDescribeWorkspaceCmd() *cobra.Command {
 	var identityFile string
 
 	cmd := &cobra.Command{
-		Use:          "workspace [WORKSPACE]",
-		Short:        "describe workspace",
-		Long:         `describe workspace`,
+		Use:   "workspace [WORKSPACE]",
+		Short: "Show workspace details",
+		Long:  `Show a workspace and its kubeconfigs in a readable format.`,
+		Example: `  kubecfg describe workspace homelab
+  kubecfg describe workspace homelab --identity-file ~/.config/kubecfg/age.txt`,
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
 		RunE: withConfig(func(cmd *cobra.Command, args []string) error {
