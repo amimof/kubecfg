@@ -42,8 +42,10 @@ var (
 	// Root command
 	rootCmd = cobra.Command{
 		Use:   "kubecfg",
-		Short: "kubecfg Kubernetes kubconfig manager",
-		Long:  "List, search and switch between multiple kubeconfig files within a directory",
+		Short: "Manage kubeconfigs as workspaces",
+		Long:  "Manage kubeconfigs from a single config file.",
+		Example: `  kubecfg workspaces
+  kubecfg use`,
 	}
 )
 
@@ -130,6 +132,7 @@ func main() {
 	rootCmd.AddCommand(newUseCmd())
 	rootCmd.AddCommand(newLoginCmd())
 	rootCmd.AddCommand(newEncryptCmd())
+	rootCmd.AddCommand(newDescribeCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

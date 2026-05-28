@@ -14,7 +14,7 @@ If you manage more than one cluster, `~/.kube` tends to turn into a junk drawer 
 1. Install `kubecfg` from GitHub [Releases](https://github.com/amimof/kubecfg/releases)
    
    ```bash
-   curl -LO https://github.com/amimof/kubecfg/releases/download/v1.0.0-beta.4/kubecfg-linux-amd64
+   curl -LO https://github.com/amimof/kubecfg/releases/latest/download/kubecfg-linux-amd64
    sudo install -m 755 kubecfg-linux-amd64 /usr/local/bin/kubecfg
    ```
 
