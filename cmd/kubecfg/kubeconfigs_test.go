@@ -21,9 +21,9 @@ func TestRunKubeconfigsCmdUsesExplicitWorkspace(t *testing.T) {
 	err := runKubeconfigsCmd("secondary", &stdout)
 	require.NoError(t, err)
 	require.Equal(t, []string{
-		"WORKSPACES  NAME   PATH         ALIASES  CONTEXTS",
-		"secondary   alpha  /tmp/a.yaml  a1, a2   1",
-		"secondary   beta   /tmp/b.yaml           2",
+		"NAME   WORKSPACES  PATH         ALIASES  CONTEXTS",
+		"alpha  secondary   /tmp/a.yaml  a1, a2   1",
+		"beta   secondary   /tmp/b.yaml           2",
 	}, strings.Split(strings.TrimSpace(stdout.String()), "\n"))
 }
 
@@ -39,10 +39,10 @@ func TestRunKubeconfigsCmdListsAllWorkspacesWhenFilterIsOmitted(t *testing.T) {
 	err := runKubeconfigsCmd("", &stdout)
 	require.NoError(t, err)
 	require.Equal(t, []string{
-		"WORKSPACES          NAME   PATH         ALIASES  CONTEXTS",
-		"secondary           alpha  /tmp/a.yaml  a1, a2   1",
-		"default, secondary  beta   /tmp/b.yaml           2",
-		"default             gamma  /tmp/c.yaml  g        0",
+		"NAME   WORKSPACES          PATH         ALIASES  CONTEXTS",
+		"alpha  secondary           /tmp/a.yaml  a1, a2   1",
+		"beta   default, secondary  /tmp/b.yaml           2",
+		"gamma  default             /tmp/c.yaml  g        0",
 	}, strings.Split(strings.TrimSpace(stdout.String()), "\n"))
 }
 
