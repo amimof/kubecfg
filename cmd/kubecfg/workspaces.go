@@ -5,8 +5,8 @@ import (
 	"io"
 	"os"
 	"sort"
-	"text/tabwriter"
 
+	"github.com/amimof/kubecfg/pkg/cmdutil/table"
 	"github.com/amimof/kubecfg/pkg/config"
 	"github.com/spf13/cobra"
 )
@@ -41,17 +41,22 @@ func runWorkspacesCmd(stdout io.Writer) error {
 	}
 	sort.Strings(names)
 
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, "NAME\tDESCRIPTION\tKUBECONFIGS"); err != nil {
-		return err
-	}
+	tbl := table.NewTable([]table.Column{
+		{Header: "NAME"},
+		{Header: "DESCRIPTION"},
+		{Header: "KUBECONFIGS"},
+	})
 
 	for _, name := range names {
 		workspace := runtime.Workspace(name)
-		if _, err := fmt.Fprintf(tw, "%s\t%s\t%d\n", name, workspace.Description, len(workspace.Kubeconfigs)); err != nil {
+		if err := tbl.AddRow(name, workspace.Description, fmt.Sprintf("%d", len(workspace.Kubeconfigs))); err != nil {
 			return err
 		}
 	}
 
-	return tw.Flush()
+	_, err = tbl.WriteTo(stdout)
+	if err != nil {
+		return err
+	}
+	return nil
 }

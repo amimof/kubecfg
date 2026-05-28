@@ -6,8 +6,8 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"text/tabwriter"
 
+	"github.com/amimof/kubecfg/pkg/cmdutil/table"
 	"github.com/amimof/kubecfg/pkg/config"
 	"github.com/spf13/cobra"
 )
@@ -39,10 +39,13 @@ func runKubeconfigsCmd(workspaceName string, stdout io.Writer) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, "WORKSPACES\tNAME\tPATH\tALIASES\tCONTEXTS"); err != nil {
-		return err
-	}
+	tbl := table.NewTable([]table.Column{
+		{Header: "NAME"},
+		{Header: "WORKSPACES"},
+		{Header: "PATH"},
+		{Header: "ALIASES"},
+		{Header: "CONTEXTS"},
+	})
 
 	for _, entry := range entries {
 		aliases := strings.Join(entry.kubeconfig.Aliases, ", ")
@@ -51,20 +54,22 @@ func runKubeconfigsCmd(workspaceName string, stdout io.Writer) error {
 			contexts = len(entry.kubeconfig.Contexts)
 		}
 
-		if _, err := fmt.Fprintf(
-			tw,
-			"%s\t%s\t%s\t%s\t%d\n",
-			strings.Join(entry.workspaces, ", "),
+		if err := tbl.AddRow(
 			entry.name,
+			strings.Join(entry.workspaces, ", "),
 			entry.kubeconfig.Path,
 			aliases,
-			contexts,
+			fmt.Sprintf("%d", contexts),
 		); err != nil {
 			return err
 		}
 	}
 
-	return tw.Flush()
+	_, err = tbl.WriteTo(stdout)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 type kubeconfigTableRow struct {
