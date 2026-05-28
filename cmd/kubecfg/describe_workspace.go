@@ -21,10 +21,10 @@ func newDescribeWorkspaceCmd() *cobra.Command {
 		Long:  `Show a workspace and its kubeconfigs in a readable format.`,
 		Example: `  kubecfg describe workspace homelab
   kubecfg describe workspace homelab --identity-file ~/.config/kubecfg/age.txt`,
-		Args:         cobra.ExactArgs(1),
+		Args:         cobra.MinimumNArgs(0),
 		SilenceUsage: true,
 		RunE: withConfig(func(cmd *cobra.Command, args []string) error {
-			return runDescribeWorkspaceCmd(args[0], identityFile, describeWorkspaceStdout)
+			return runDescribeWorkspaceCmd(args, identityFile, describeWorkspaceStdout)
 		}),
 	}
 
@@ -33,7 +33,7 @@ func newDescribeWorkspaceCmd() *cobra.Command {
 	return cmd
 }
 
-func runDescribeWorkspaceCmd(name, identityFile string, stdout io.Writer) error {
+func runDescribeWorkspaceCmd(args []string, identityFile string, stdout io.Writer) error {
 	compiler, err := newCompilerWithOptionalDecryptor(&cfg, identityFile)
 	if err != nil {
 		return err
@@ -44,11 +44,33 @@ func runDescribeWorkspaceCmd(name, identityFile string, stdout io.Writer) error 
 		return err
 	}
 
-	if !runtime.WorkspaceExists(name) {
-		return fmt.Errorf("workspace does not exist: %s", name)
+	names := args
+
+	if len(names) == 0 {
+		for _, ws := range runtime.Workspaces {
+			names = append(names, ws.Name)
+		}
 	}
 
-	return renderWorkspaceDescription(stdout, *runtime.Workspace(name))
+	// Check so that all workspaces exist
+	for _, name := range names {
+		if !runtime.WorkspaceExists(name) {
+			return fmt.Errorf("workspace does not exist: %s", name)
+		}
+	}
+
+	for i, name := range names {
+		if err := renderWorkspaceDescription(stdout, *runtime.Workspace(name)); err != nil {
+			return fmt.Errorf("render error: %w", err)
+		}
+		if i != len(names)-1 {
+			if err := cmdutil.RenderLine(stdout, 60); err != nil {
+				return fmt.Errorf("render error: %w", err)
+			}
+		}
+	}
+
+	return nil
 }
 
 func renderWorkspaceDescription(stdout io.Writer, rw config.RuntimeWorkspace) error {
@@ -57,35 +79,43 @@ func renderWorkspaceDescription(stdout io.Writer, rw config.RuntimeWorkspace) er
 			cmdutil.NewElement(`{{ "Name" | FgHiGreen }}:               {{ .Workspace.Name }}`),
 			cmdutil.NewElement(`{{ "Description" | FgHiGreen }}:        {{ .Workspace.Description }}`),
 			cmdutil.NewElement(`{{ "Default Namespace" | FgHiGreen }}:  {{ .Workspace.DefaultNamespace }}`),
-			cmdutil.NewElement(`{{ "Kubeconfigs" | FgHiGreen }}:        {{ .Workspace.Kubeconfigs | len | string | FgHiBlue }}`),
+			cmdutil.NewElement(`{{ "Kubeconfigs" | FgHiGreen }}:        {{ .Workspace.Kubeconfigs | len | string | FgBlue }}`),
 		).WithLayout(cmdutil.Layout{Dimensions: [2]int{1024, 0}}),
 	}
+
+	var i int
 
 	for _, kubeconfig := range rw.Kubeconfigs {
 		container := cmdutil.NewContainer(cmdutil.Data{
 			"Kubeconfig": kubeconfig,
+			"Index":      i,
 		},
-			cmdutil.NewElement(`{{ "Kubeconfig" | FgHiGreen }}:         {{ .Container.Kubeconfig.Name }}`),
-			cmdutil.NewElement(`{{ "Path" | FgHiGreen}}:               {{ .Container.Kubeconfig.Path }}`),
-			cmdutil.NewElement(`{{ "Aliases" | FgHiGreen}}:            {{ .Container.Kubeconfig.Aliases }}`),
-			cmdutil.NewElement(`{{ "Protected" | FgHiGreen }}:          {{ .Container.Kubeconfig.Protected | string | FgHiYellow }}`),
-			cmdutil.NewElement(`{{ "Current Context" | FgHiGreen }}:    {{ .Container.Kubeconfig.CurrentContext }}`),
-			cmdutil.NewElement(`{{ "Contexts" | FgHiGreen }}:           {{ .Container.Kubeconfig.Contexts | len | string | FgHiBlue }}`),
+			cmdutil.NewElement(`{{ .Container.Index  | string | FgMagenta }}: {{ "Kubeconfig" | FgHiGreen }}:         {{ .Container.Kubeconfig.Name }}`),
+			cmdutil.NewElement(`   {{ "Path" | FgHiGreen}}:               {{ .Container.Kubeconfig.Path }}`),
+			cmdutil.NewElement(`   {{ "Aliases" | FgHiGreen}}:            {{ .Container.Kubeconfig.Aliases }}`),
+			cmdutil.NewElement(`   {{ "Protected" | FgHiGreen }}:          {{ .Container.Kubeconfig.Protected | string | FgYellow }}`),
+			cmdutil.NewElement(`   {{ "Current Context" | FgHiGreen }}:    {{ .Container.Kubeconfig.CurrentContext.Name | string }}`),
+			cmdutil.NewElement(`   {{ "Contexts" | FgHiGreen }}:           {{ .Container.Kubeconfig.Contexts | len | string | FgBlue }}`),
 		).WithLayout(cmdutil.Layout{Dimensions: [2]int{1024, 0}})
 
 		containers = append(containers, container)
 
+		var y int
+
 		for _, context := range kubeconfig.Contexts {
 			containers = append(containers, cmdutil.NewContainer(cmdutil.Data{
 				"Context": context,
+				"Index":   y,
 			},
-				cmdutil.NewElement(`  {{ "Context:" | FgHiGreen }}            {{ .Container.Context.Name }}`),
-				cmdutil.NewElement(`  {{ "Cluster:" | FgHiGreen }}            {{ .Container.Context.Cluster.Name }}`),
-				cmdutil.NewElement(`  {{ "AuthInfo:" | FgHiGreen }}           {{ .Container.Context.AuthInfo.Name }}`),
-				cmdutil.NewElement(`  {{ "Namespace:"  | FgHiGreen}}          {{ .Container.Context.Namespace }}`),
-				cmdutil.NewElement(`  {{ "Credential Source:"  | FgHiGreen}}  {{ .Container.Context.AuthInfo.CredentialSource | source }}`),
+				cmdutil.NewElement(`    {{ .Container.Index | string | FgMagenta}}: {{ "Context:" | FgHiGreen }}            {{ .Container.Context.Name }}`),
+				cmdutil.NewElement(`       {{ "Cluster:" | FgHiGreen }}            {{ .Container.Context.Cluster.Name }}`),
+				cmdutil.NewElement(`       {{ "AuthInfo:" | FgHiGreen }}           {{ .Container.Context.AuthInfo.Name }}`),
+				cmdutil.NewElement(`       {{ "Namespace:"  | FgHiGreen}}          {{ .Container.Context.Namespace }}`),
+				cmdutil.NewElement(`       {{ "Credential Source:"  | FgHiGreen}}  {{ .Container.Context.AuthInfo.CredentialSource | source }}`),
 			).WithLayout(cmdutil.Layout{Dimensions: [2]int{1024, 0}}))
+			y += 1
 		}
+		i += 1
 	}
 
 	return cmdutil.RenderOnce(stdout, cmdutil.Data{"Workspace": rw}, containers...)
