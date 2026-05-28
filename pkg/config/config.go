@@ -30,7 +30,6 @@ type Kubeconfig struct {
 }
 
 type Cluster struct {
-	Name                     string                    `mapstructure:"name,omitempty" json:"name,omitempty" yaml:"name,omitempty"`
 	LocationOfOrigin         string                    `mapstructure:"location_of_origin,omitempty" json:"location_of_origin,omitempty" yaml:"location_of_origin,omitempty"`
 	Server                   string                    `mapstructure:"server,omitempty" json:"server,omitempty" yaml:"server,omitempty"`
 	TLSServerName            string                    `mapstructure:"tls_server_name,omitempty" json:"tls_server_name,omitempty" yaml:"tls_server_name,omitempty"`

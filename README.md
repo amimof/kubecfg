@@ -35,19 +35,16 @@ If you manage more than one cluster, `~/.kube` tends to turn into a junk drawer 
 
        clusters:
          mainframe-dev:
-           name: mainframe-dev
            server: https://mainframe-dev.amimof.com
 
        auth_infos:
          admin:
-           name: admin
            exec:
              command: oidc-login
              args: ["get-token", "--issuer-url", "https://issuer.example.com"]
 
        contexts:
          mainframe:
-           name: mainframe-dev
            cluster: mainframe-dev
            authinfo: admin
    ```

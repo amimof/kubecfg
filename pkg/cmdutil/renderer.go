@@ -641,6 +641,18 @@ func NewApp(wr io.Writer, data Data, containers ...*Container) *App {
 	}
 }
 
+func RenderLine(w io.Writer, width int) error {
+	container := NewContainer(nil,
+		NewElement(strings.Repeat("─", width)),
+	).WithLayout(Layout{Dimensions: [2]int{1024, 0}})
+	for _, line := range container.RenderStatic(nil) {
+		if _, err := fmt.Fprintln(w, line); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // RenderOnce renders containers a single time to the provided writer.
 func RenderOnce(w io.Writer, data Data, containers ...*Container) error {
 	for i, container := range containers {
