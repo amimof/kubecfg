@@ -125,6 +125,7 @@ func main() {
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "number for the log level verbosity (debug, info, warn, error, fatal, panic)")
 
 	rootCmd.AddCommand(newVersionCmd())
+	rootCmd.AddCommand(newKubeconfigsCmd())
 	rootCmd.AddCommand(newWorkspacesCmd())
 	rootCmd.AddCommand(newUseCmd())
 	rootCmd.AddCommand(newLoginCmd())
