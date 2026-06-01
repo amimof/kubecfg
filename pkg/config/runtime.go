@@ -8,11 +8,9 @@ import (
 type RuntimeConfig struct {
 	Version string
 
-	DefaultWorkspace string
-	DefaultNamespace string
-
-	Workspaces  map[string]*RuntimeWorkspace
-	Kubeconfigs map[string]*RuntimeKubeconfig
+	Workspaces       map[string]*RuntimeWorkspace
+	Kubeconfigs      map[string]*RuntimeKubeconfig
+	DefaultWorkspace *RuntimeWorkspace
 
 	// Lookup indexes for CLI ergonomics.
 	KubeconfigAliases map[string]*RuntimeKubeconfig
@@ -20,14 +18,10 @@ type RuntimeConfig struct {
 }
 
 type RuntimeWorkspace struct {
-	Name string
-
-	Description string
-
-	DefaultNamespace string
-	DefaultContext   *RuntimeContextRef
-
-	Kubeconfigs map[string]*RuntimeKubeconfig
+	Name              string
+	Description       string
+	DefaultKubeconfig *RuntimeKubeconfig
+	Kubeconfigs       map[string]*RuntimeKubeconfig
 }
 
 type RuntimeKubeconfig struct {
@@ -41,7 +35,9 @@ type RuntimeKubeconfig struct {
 	AuthInfos map[string]*RuntimeAuthInfo
 	Contexts  map[string]*RuntimeContext
 
-	CurrentContext *RuntimeContext
+	CurrentContext   *RuntimeContext
+	DefaultContext   *RuntimeContext
+	DefaultNamespace string
 
 	Config *api.Config
 }

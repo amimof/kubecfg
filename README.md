@@ -148,6 +148,7 @@ workspaces:
     # - "<workspace>/<kubeconfig>/<context>"
     # - "<kubeconfig>/<context>"
     # - "<context>" when unique inside this workspace
+    # Overrides kubeconfigs.<name>.current_context when both are set.
     defaultContext: static-token/admin
 
     # Workspace-level fallback namespace. Stored in runtime config, but not
@@ -158,6 +159,11 @@ kubeconfigs:
   static-token:
     # Absolute path, or "@/..." relative to --base-dir.
     path: "@/generated/static-token.yaml"
+
+    # Local context name to render as current-context for this kubeconfig.
+    # This is resolved only within static-token.contexts.
+    # workspace.defaultContext overrides it when both are set.
+    current_context: admin
 
     # Present in the schema, but not currently enforced by CLI commands.
     # protected: true

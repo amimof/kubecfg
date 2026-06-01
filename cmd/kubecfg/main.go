@@ -75,7 +75,6 @@ func loadConfig(validate bool) error {
 			cfg = config.Config{
 				Version:          "v1",
 				DefaultWorkspace: "",
-				DefaultNamespace: "",
 				Kubeconfigs:      make(map[string]*config.Kubeconfig),
 				Workspaces:       make(map[string]*config.Workspace),
 			}
