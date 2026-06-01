@@ -19,7 +19,7 @@ type Color string
 type Field int
 
 const (
-	FieldPhase Field = iota
+	FieldError Field = iota
 	FieldNode
 	FieldPid
 	FieldID
@@ -31,14 +31,11 @@ const (
 // Detail lines are suppressed when the entry is in a terminal state (failed or
 // done) so that only the status line remains visible.
 var fieldTemplate = map[Field]string{
-	FieldPhase:  `{{- if and (not .Container.Failed) (not .Container.Done) }}  Phase: {{ if eq .Container.Phase "Running" }}{{ .Container.Phase | FgGreen }}{{else}}{{ .Container.Phase | FgYellow }}{{end}}{{- end}}`,
-	FieldNode:   `  Node: {{ .Container.Node }}`,
-	FieldPid:    `  Pid: {{ .Container.Pid }}`,
-	FieldReason: `{{- if and (not .Container.Failed) (not .Container.Done) }}  Error: {{ .Container.Reason | FgBlue }}{{- end}}`,
+	FieldError: `{{- if ne .Container.Error "" }}  {{ "Error:" | FgRed }} {{ .Container.Error }} {{- end}}`,
 }
 
 // defaultFields is the ordered set of fields shown when WithFields is not called.
-var defaultFields = []Field{FieldPhase, FieldNode, FieldPid, FieldReason}
+var defaultFields = []Field{FieldError, FieldNode, FieldPid, FieldReason}
 
 type Option func(*Dashboard)
 
@@ -136,15 +133,7 @@ func (d *Dashboard) AddTask(t *config.Config) int {
 func (d *Dashboard) SetTask(idx int, t *config.Config) {
 	d.Update(idx, func(s *ServiceState) {
 		s.config = t
-		s.container.SetMetadata(map[string]any{
-			// "Name":   t.GetMeta().GetName(),
-			// "Phase":  t.GetStatus().GetPhase().GetValue(),
-			// "Node":   t.GetStatus().GetNode().GetValue(),
-			// "Pid":    t.GetStatus().GetPid().GetValue(),
-			// "ID":     t.GetStatus().GetId().GetValue(),
-			// "Image":  t.GetConfig().GetImage(),
-			// "Reason": t.GetStatus().GetReason(),
-		})
+		s.container.SetMetadata(map[string]any{})
 	})
 }
 
@@ -185,6 +174,12 @@ func (d *Dashboard) FailMsg(idx int, msg string) {
 		s.Done = true
 		s.Failed = true
 		s.FailedMsg = msg
+	})
+}
+
+func (d *Dashboard) SetPhase(idx int, msg string) {
+	d.Update(idx, func(s *ServiceState) {
+		s.container.UpdateMetadata("Error", msg)
 	})
 }
 
@@ -306,12 +301,7 @@ func NewDashboard(names []string, opts ...Option) (*Dashboard, error) {
 			"Failed":    false,
 			"FailedMsg": "",
 			"Name":      n,
-			"Phase":     "",
-			"Node":      "",
-			"Pid":       "",
-			"ID":        "",
-			"Image":     "",
-			"Reason":    "",
+			"Error":     "",
 		}
 
 		// Status line is always present.

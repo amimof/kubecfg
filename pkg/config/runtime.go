@@ -7,6 +7,7 @@ import (
 
 type RuntimeConfig struct {
 	Version string
+	BaseDir string
 
 	Workspaces       map[string]*RuntimeWorkspace
 	Kubeconfigs      map[string]*RuntimeKubeconfig

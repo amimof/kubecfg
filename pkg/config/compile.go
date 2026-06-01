@@ -39,6 +39,7 @@ func (c *Compiler) Compile(cfg *Config) (*RuntimeConfig, error) {
 
 	rt := &RuntimeConfig{
 		Version: cfg.Version,
+		BaseDir: cfg.BaseDir,
 
 		Workspaces:        make(map[string]*RuntimeWorkspace),
 		Kubeconfigs:       make(map[string]*RuntimeKubeconfig),
