@@ -78,7 +78,7 @@ func renderWorkspaceDescription(stdout io.Writer, rw config.RuntimeWorkspace) er
 		cmdutil.NewContainer(nil,
 			cmdutil.NewElement(`{{ "Name" | FgHiGreen }}:               {{ .Workspace.Name }}`),
 			cmdutil.NewElement(`{{ "Description" | FgHiGreen }}:        {{ .Workspace.Description }}`),
-			cmdutil.NewElement(`{{ "Default Namespace" | FgHiGreen }}:  {{ .Workspace.DefaultNamespace }}`),
+			cmdutil.NewElement(`{{ "Default Kubeconfig" | FgHiGreen }}: {{ .WorkspaceDefaultKubeconfig }}`),
 			cmdutil.NewElement(`{{ "Kubeconfigs" | FgHiGreen }}:        {{ .Workspace.Kubeconfigs | len | string | FgBlue }}`),
 		).WithLayout(cmdutil.Layout{Dimensions: [2]int{1024, 0}}),
 	}
@@ -94,7 +94,9 @@ func renderWorkspaceDescription(stdout io.Writer, rw config.RuntimeWorkspace) er
 			cmdutil.NewElement(`   {{ "Path" | FgHiGreen}}:               {{ .Container.Kubeconfig.Path }}`),
 			cmdutil.NewElement(`   {{ "Aliases" | FgHiGreen}}:            {{ .Container.Kubeconfig.Aliases }}`),
 			cmdutil.NewElement(`   {{ "Protected" | FgHiGreen }}:          {{ .Container.Kubeconfig.Protected | string | FgYellow }}`),
-			cmdutil.NewElement(`   {{ "Current Context" | FgHiGreen }}:    {{ .Container.Kubeconfig.CurrentContext.Name | string }}`),
+			cmdutil.NewElement(`   {{ "Current Context" | FgHiGreen }}:    {{ .Container.Kubeconfig.CurrentContext.Name }}`),
+			cmdutil.NewElement(`   {{ "Default Context" | FgHiGreen }}:    {{ .Container.Kubeconfig.DefaultContext.Name }}`),
+			cmdutil.NewElement(`   {{ "Default Namespace" | FgHiGreen }}:    {{ .Container.Kubeconfig.DefaultNamespace }}`),
 			cmdutil.NewElement(`   {{ "Contexts" | FgHiGreen }}:           {{ .Container.Kubeconfig.Contexts | len | string | FgBlue }}`),
 		).WithLayout(cmdutil.Layout{Dimensions: [2]int{1024, 0}})
 
@@ -118,5 +120,16 @@ func renderWorkspaceDescription(stdout io.Writer, rw config.RuntimeWorkspace) er
 		i += 1
 	}
 
-	return cmdutil.RenderOnce(stdout, cmdutil.Data{"Workspace": rw}, containers...)
+	return cmdutil.RenderOnce(stdout, cmdutil.Data{
+		"Workspace":                  rw,
+		"WorkspaceDefaultKubeconfig": workspaceDefaultKubeconfigDisplay(rw.DefaultKubeconfig),
+	}, containers...)
+}
+
+func workspaceDefaultKubeconfigDisplay(rk *config.RuntimeKubeconfig) string {
+	if rk == nil {
+		return ""
+	}
+
+	return rk.Name
 }

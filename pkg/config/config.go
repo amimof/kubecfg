@@ -7,22 +7,24 @@ import (
 type Config struct {
 	Version          string                 `mapstructure:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
 	DefaultWorkspace string                 `mapstructure:"default_workspace,omitempty" json:"default_workspace,omitempty" yaml:"default_workspace,omitempty"`
-	DefaultNamespace string                 `mapstructure:"default_namespace,omitempty" json:"default_namespace,omitempty" yaml:"default_namespace,omitempty"`
 	Workspaces       map[string]*Workspace  `mapstructure:"workspaces,omitempty" json:"workspaces,omitempty" yaml:"workspaces,omitempty"`
 	Kubeconfigs      map[string]*Kubeconfig `mapstructure:"kubeconfigs,omitempty" json:"kubeconfigs,omitempty" yaml:"kubeconfigs,omitempty"`
 }
 
 type Workspace struct {
-	Description      string   `json:"description,omitempty"`
-	Kubeconfigs      []string `json:"kubeconfigs,omitempty"`
-	DefaultContext   string   `json:"default_context,omitempty"`
-	DefaultNamespace string   `json:"default_namespace,omitempty"`
+	Description       string   `mapstructure:"description,omitempty" json:"description,omitempty" yaml:"description,omitempty"`
+	Kubeconfigs       []string `mapstructure:"kubeconfigs,omitempty" json:"kubeconfigs,omitempty" yaml:"kubeconfigs,omitempty"`
+	DefaultKubeconfig string   `mapstructure:"default_kubeconfig,omitempty" json:"default_kubeconfig,omitempty" yaml:"default_kubeconfig,omitempty"`
 }
 
 type Kubeconfig struct {
-	Path      string   `json:"path,omitempty"`
-	Protected bool     `json:"protected,omitempty"`
-	Aliases   []string `json:"aliases,omitempty"`
+	Path           string   `json:"path,omitempty"`
+	Protected      bool     `json:"protected,omitempty"`
+	Aliases        []string `json:"aliases,omitempty"`
+	CurrentContext string   `mapstructure:"current_context,omitempty" json:"current_context,omitempty" yaml:"current_context,omitempty"`
+
+	DefaultContext   string `mapstructure:"default_context,omitempty" json:"default_context,omitempty" yaml:"default_context,omitempty"`
+	DefaultNamespace string `mapstructure:"default_namespace,omitempty" json:"default_namespace,omitempty" yaml:"default_namespace,omitempty"`
 
 	Clusters  map[string]*Cluster  `mapstructure:"clusters,omitempty" json:"clusters,omitempty" yaml:"clusters,omitempty"`
 	AuthInfos map[string]*AuthInfo `mapstructure:"auth_infos,omitempty" json:"auth_infos,omitempty" yaml:"auth_infos,omitempty"`

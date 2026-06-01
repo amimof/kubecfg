@@ -40,9 +40,6 @@ func (c *Compiler) Compile(cfg *Config) (*RuntimeConfig, error) {
 	rt := &RuntimeConfig{
 		Version: cfg.Version,
 
-		DefaultWorkspace: cfg.DefaultWorkspace,
-		DefaultNamespace: cfg.DefaultNamespace,
-
 		Workspaces:        make(map[string]*RuntimeWorkspace),
 		Kubeconfigs:       make(map[string]*RuntimeKubeconfig),
 		KubeconfigAliases: make(map[string]*RuntimeKubeconfig),
@@ -71,10 +68,11 @@ func (c *Compiler) compileKubeconfigs(rt *RuntimeConfig, cfg *Config) error {
 		}
 
 		rkc := &RuntimeKubeconfig{
-			Name:      kubeconfigName,
-			Path:      c.resolvePath(kubeconfig.Path),
-			Protected: kubeconfig.Protected,
-			Aliases:   append([]string(nil), kubeconfig.Aliases...),
+			Name:             kubeconfigName,
+			Path:             c.resolvePath(kubeconfig.Path),
+			Protected:        kubeconfig.Protected,
+			Aliases:          append([]string(nil), kubeconfig.Aliases...),
+			DefaultNamespace: strings.TrimSpace(kubeconfig.DefaultNamespace),
 
 			Clusters:  make(map[string]*RuntimeCluster),
 			AuthInfos: make(map[string]*RuntimeAuthInfo),
@@ -100,6 +98,14 @@ func (c *Compiler) compileKubeconfigs(rt *RuntimeConfig, cfg *Config) error {
 		}
 
 		if err := resolveRuntimeContexts(rkc); err != nil {
+			return err
+		}
+
+		if err := resolveKubeconfigCurrentContext(rkc, kubeconfig.CurrentContext); err != nil {
+			return err
+		}
+
+		if err := resolveKubeconfigDefaultContext(rkc, kubeconfig.DefaultContext); err != nil {
 			return err
 		}
 
@@ -219,6 +225,8 @@ func compileContexts(rkc *RuntimeKubeconfig, kc *Kubeconfig) error {
 		runtimeAuthInfo := rkc.AuthInfo(context.AuthInfo)
 		runtimeCluster := rkc.Cluster(context.Cluster)
 
+		namespace := firstNonEmpty(context.Namespace, kc.DefaultNamespace)
+
 		rkc.Contexts[name] = &RuntimeContext{
 			Name: name,
 
@@ -227,13 +235,13 @@ func compileContexts(rkc *RuntimeKubeconfig, kc *Kubeconfig) error {
 
 			ClusterKey:  context.Cluster,
 			AuthInfoKey: context.AuthInfo,
-			Namespace:   context.Namespace,
+			Namespace:   namespace,
 
 			Context: &api.Context{
 				LocationOfOrigin: context.LocationOfOrigin,
 				Cluster:          context.Cluster,
 				AuthInfo:         context.AuthInfo,
-				Namespace:        context.Namespace,
+				Namespace:        namespace,
 				Extensions:       context.Extensions,
 			},
 		}
@@ -271,8 +279,28 @@ func resolveRuntimeContexts(rkc *RuntimeKubeconfig) error {
 		ctx.Context.Cluster = cluster.Name
 		ctx.Context.AuthInfo = authInfo.Name
 		ctx.Context.Namespace = ctx.Namespace
+
 	}
 
+	return nil
+}
+
+func resolveKubeconfigCurrentContext(rkc *RuntimeKubeconfig, currentContext string) error {
+	currentContext = strings.TrimSpace(currentContext)
+	if currentContext == "" {
+		return nil
+	}
+
+	ctx, ok := rkc.Contexts[currentContext]
+	if !ok {
+		return fmt.Errorf(
+			"kubeconfigs.%s.current_context references missing context %q",
+			rkc.Name,
+			currentContext,
+		)
+	}
+
+	rkc.CurrentContext = ctx
 	return nil
 }
 
@@ -307,8 +335,7 @@ func (c *Compiler) compileWorkspaces(rt *RuntimeConfig, cfg *Config) error {
 		rw := &RuntimeWorkspace{
 			Name: workspaceName,
 
-			Description:      workspace.Description,
-			DefaultNamespace: firstNonEmpty(workspace.DefaultNamespace, cfg.DefaultNamespace),
+			Description: workspace.Description,
 
 			Kubeconfigs: make(map[string]*RuntimeKubeconfig),
 		}
@@ -328,6 +355,17 @@ func (c *Compiler) compileWorkspaces(rt *RuntimeConfig, cfg *Config) error {
 			indexWorkspaceContexts(rt, rw, rkc)
 		}
 
+		if workspace.DefaultKubeconfig != "" {
+			rw.DefaultKubeconfig = rw.Kubeconfig(workspace.DefaultKubeconfig)
+			if rw.DefaultKubeconfig == nil {
+				return fmt.Errorf(
+					"workspaces.%s.default_kubeconfig references missing kubeconfig %q",
+					workspaceName,
+					workspace.DefaultKubeconfig,
+				)
+			}
+		}
+
 		rt.Workspaces[workspaceName] = rw
 	}
 
@@ -336,30 +374,12 @@ func (c *Compiler) compileWorkspaces(rt *RuntimeConfig, cfg *Config) error {
 
 func (c *Compiler) compileDefaults(rt *RuntimeConfig, cfg *Config) error {
 	if cfg.DefaultWorkspace != "" {
-		if _, ok := rt.Workspaces[cfg.DefaultWorkspace]; !ok {
+		rw, ok := rt.Workspaces[cfg.DefaultWorkspace]
+		if !ok {
 			return fmt.Errorf("default_workspace references missing workspace %q", cfg.DefaultWorkspace)
 		}
-	}
 
-	for workspaceName, workspace := range cfg.Workspaces {
-		if workspace == nil {
-			continue
-		}
-
-		if workspace.DefaultContext == "" {
-			continue
-		}
-
-		rw := rt.Workspaces[workspaceName]
-		ref, err := resolveWorkspaceDefaultContext(rt, rw, workspace.DefaultContext)
-		if err != nil {
-			return err
-		}
-
-		rw.DefaultContext = ref
-		ref.Kubeconfig.CurrentContext = ref.Context
-
-		compileNativeKubeconfig(ref.Kubeconfig)
+		rt.DefaultWorkspace = rw
 	}
 
 	return nil
@@ -410,54 +430,24 @@ func indexWorkspaceContexts(rt *RuntimeConfig, rw *RuntimeWorkspace, rkc *Runtim
 	}
 }
 
-func resolveWorkspaceDefaultContext(
-	rt *RuntimeConfig,
-	rw *RuntimeWorkspace,
-	value string,
-) (*RuntimeContextRef, error) {
+func resolveKubeconfigDefaultContext(rkc *RuntimeKubeconfig, value string) error {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return nil, nil
+		return nil
 	}
 
-	// Fully-qualified or kubeconfig-qualified lookup.
-	if ref, ok := rt.Contexts[value]; ok {
-		if ref.Workspace.Name == rw.Name {
-			return ref, nil
-		}
-	}
-
-	// Search by context key or rendered context name within this workspace.
-	var matches []*RuntimeContextRef
-
-	for _, rkc := range rw.Kubeconfigs {
-		for _, ctx := range rkc.Contexts {
-			if ctx.Name == value {
-				matches = append(matches, &RuntimeContextRef{
-					Workspace:  rw,
-					Kubeconfig: rkc,
-					Context:    ctx,
-				})
-			}
-		}
-	}
-
-	switch len(matches) {
-	case 0:
-		return nil, fmt.Errorf(
-			"workspaces.%s.default_context references missing context %q",
-			rw.Name,
-			value,
-		)
-	case 1:
-		return matches[0], nil
-	default:
-		return nil, fmt.Errorf(
-			"workspaces.%s.default_context %q is ambiguous; use kubeconfig/context",
-			rw.Name,
+	ctx, ok := rkc.Contexts[value]
+	if !ok {
+		return fmt.Errorf(
+			"kubeconfigs.%s.default_context references missing context %q",
+			rkc.Name,
 			value,
 		)
 	}
+
+	rkc.DefaultContext = ctx
+	rkc.CurrentContext = ctx
+	return nil
 }
 
 func (c *Compiler) resolvePath(path string) string {
