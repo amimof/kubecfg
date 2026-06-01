@@ -11,14 +11,11 @@ import (
 
 func TestRunWorkspacesCmdPrintsHeaderedTable(t *testing.T) {
 	originalCfg := cfg
-	originalBaseDir := baseDir
 	t.Cleanup(func() {
 		cfg = originalCfg
-		baseDir = originalBaseDir
 	})
 
 	cfg = newWorkspacesCommandTestConfig()
-	baseDir = "/tmp"
 
 	var stdout bytes.Buffer
 	err := runWorkspacesCmd(&stdout)

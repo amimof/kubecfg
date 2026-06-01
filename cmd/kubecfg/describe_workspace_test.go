@@ -11,14 +11,11 @@ import (
 
 func TestRunDescribeWorkspaceCmdRendersDefaultKubeconfig(t *testing.T) {
 	originalCfg := cfg
-	originalBaseDir := baseDir
 	t.Cleanup(func() {
 		cfg = originalCfg
-		baseDir = originalBaseDir
 	})
 
 	cfg = newDescribeWorkspaceTestConfig()
-	baseDir = "/tmp"
 
 	var stdout bytes.Buffer
 	err := runDescribeWorkspaceCmd([]string{"work"}, "", &stdout)
@@ -65,15 +62,12 @@ func newDescribeWorkspaceTestConfig() config.Config {
 
 func TestRunDescribeWorkspaceCmdRendersEmptyDefaultKubeconfigWhenUnset(t *testing.T) {
 	originalCfg := cfg
-	originalBaseDir := baseDir
 	t.Cleanup(func() {
 		cfg = originalCfg
-		baseDir = originalBaseDir
 	})
 
 	cfg = newDescribeWorkspaceTestConfig()
 	cfg.Workspaces["work"].DefaultKubeconfig = ""
-	baseDir = "/tmp"
 
 	var stdout bytes.Buffer
 	err := runDescribeWorkspaceCmd([]string{"work"}, "", &stdout)

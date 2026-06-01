@@ -37,7 +37,6 @@ var (
 
 	logLevel   string
 	configFile string
-	baseDir    string
 
 	// Root command
 	rootCmd = cobra.Command{
@@ -56,7 +55,6 @@ func init() {
 func initConfig() {
 	viper.SetConfigFile(configFile)
 	viper.SetConfigType("yaml")
-	// viper.SetOptions(viper.WithEncoderRegistry)
 }
 
 func withConfig(run func(cmd *cobra.Command, args []string) error) func(cmd *cobra.Command, args []string) error {
@@ -118,11 +116,9 @@ func main() {
 		logrus.Fatalf("home directory cannot be determined: %v", err)
 	}
 	defaultConfigPath := filepath.Join(home, ".config", "kubecfg.yaml")
-	defaultBaseDir := filepath.Join(home, ".kube")
 
 	// Setup flags
 	rootCmd.PersistentFlags().StringVarP(&configFile, "config", "c", defaultConfigPath, "config file")
-	rootCmd.PersistentFlags().StringVarP(&baseDir, "base-dir", "b", defaultBaseDir, "kubeconfig base directory")
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "number for the log level verbosity (debug, info, warn, error, fatal, panic)")
 
 	rootCmd.AddCommand(newVersionCmd())

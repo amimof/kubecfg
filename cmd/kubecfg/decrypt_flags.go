@@ -24,7 +24,7 @@ func newCompilerWithOptionalDecryptor(cfg *config.Config, identityFile string) (
 		compilerOpts = append(compilerOpts, config.WithDecryptor(decryptor))
 	}
 
-	return config.NewCompiler(baseDir, compilerOpts...), nil
+	return config.NewCompiler(compilerOpts...), nil
 }
 
 func loadAgeDecryptor(identityFile string) (*decrypt.AgeDecryptor, error) {

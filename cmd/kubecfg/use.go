@@ -70,7 +70,7 @@ func writeKubeconfig(path string, kubeconfig api.Config) error {
 }
 
 // setConfig creates a new symlink to a kubeconfigfile overwriting any existing one
-func setConfig(name string) error {
+func setConfig(baseDir, name string) error {
 	dst := path.Join(baseDir, "config")
 	// Remove existing symlink to config so we don't run into an error
 	if _, err := os.Stat(dst); !os.IsNotExist(err) {
@@ -131,7 +131,7 @@ func runUseCmd(workspaceName, kubeconfigName string, skipLogin bool, identityFil
 		return err
 	}
 
-	if err := setConfig(rk.Path); err != nil {
+	if err := setConfig(runtime.BaseDir, rk.Path); err != nil {
 		return err
 	}
 
@@ -173,7 +173,7 @@ func runUseCmdFzf(workspaceName string, skipLogin bool, identityFile string, wai
 	if err := writeKubeconfig(rk.Path, *rk.Config); err != nil {
 		return err
 	}
-	if err := setConfig(rk.Path); err != nil {
+	if err := setConfig(runtime.BaseDir, rk.Path); err != nil {
 		return err
 	}
 	fmt.Printf("Using kubeconfig: %s/%s\n", workspace, selected)

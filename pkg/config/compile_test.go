@@ -20,7 +20,7 @@ func TestCompileFailsWhenEncryptedFieldsExistWithoutDecryptor(t *testing.T) {
 		},
 	}
 
-	_, err := NewCompiler("").Compile(&cfg)
+	_, err := NewCompiler().Compile(&cfg)
 	require.EqualError(t, err, "authinfo \"user\" contains encrypted fields; provide --identity-file or a passphrase")
 }
 
@@ -54,7 +54,7 @@ func TestCompileEncryptedTokenOverridesPlaintextToken(t *testing.T) {
 		},
 	}
 
-	runtime, err := NewCompiler("", WithDecryptor(decryptor)).Compile(&cfg)
+	runtime, err := NewCompiler(WithDecryptor(decryptor)).Compile(&cfg)
 	require.NoError(t, err)
 	require.Equal(t, "decrypted-token", runtime.Kubeconfigs["demo"].AuthInfos["user"].AuthInfo.Token)
 }
@@ -81,7 +81,7 @@ func TestCompileResolvesKubeconfigCurrentContext(t *testing.T) {
 		},
 	}
 
-	runtime, err := NewCompiler("").Compile(&cfg)
+	runtime, err := NewCompiler().Compile(&cfg)
 	require.NoError(t, err)
 	require.Equal(t, "admin", runtime.Kubeconfigs["demo"].CurrentContext.Name)
 	require.Equal(t, "admin", runtime.Kubeconfigs["demo"].Config.CurrentContext)
@@ -109,7 +109,7 @@ func TestCompileFailsWhenKubeconfigCurrentContextIsMissing(t *testing.T) {
 		},
 	}
 
-	_, err := NewCompiler("").Compile(&cfg)
+	_, err := NewCompiler().Compile(&cfg)
 	require.EqualError(t, err, "kubeconfigs.demo.current_context references missing context \"missing\"")
 }
 
@@ -147,7 +147,7 @@ func TestCompileKubeconfigDefaultContextOverridesCurrentContext(t *testing.T) {
 		},
 	}
 
-	runtime, err := NewCompiler("").Compile(&cfg)
+	runtime, err := NewCompiler().Compile(&cfg)
 	require.NoError(t, err)
 	require.Equal(t, "work", runtime.DefaultWorkspace.Name)
 	require.Equal(t, "demo", runtime.Workspaces["work"].DefaultKubeconfig.Name)
@@ -178,7 +178,7 @@ func TestCompileFailsWhenKubeconfigDefaultContextIsMissing(t *testing.T) {
 		},
 	}
 
-	_, err := NewCompiler("").Compile(&cfg)
+	_, err := NewCompiler().Compile(&cfg)
 	require.EqualError(t, err, "kubeconfigs.demo.default_context references missing context \"missing\"")
 }
 
@@ -209,11 +209,26 @@ func TestCompileKubeconfigDefaultNamespaceAppliesToContextsWithoutNamespace(t *t
 		},
 	}
 
-	runtime, err := NewCompiler("").Compile(&cfg)
+	runtime, err := NewCompiler().Compile(&cfg)
 	require.NoError(t, err)
 	require.Equal(t, "team-a", runtime.Kubeconfigs["demo"].DefaultNamespace)
 	require.Equal(t, "team-a", runtime.Kubeconfigs["demo"].Contexts["admin"].Namespace)
 	require.Equal(t, "team-a", runtime.Kubeconfigs["demo"].Config.Contexts["admin"].Namespace)
 	require.Equal(t, "team-b", runtime.Kubeconfigs["demo"].Contexts["ops"].Namespace)
 	require.Equal(t, "team-b", runtime.Kubeconfigs["demo"].Config.Contexts["ops"].Namespace)
+}
+
+func TestCompileResolvesKubeconfigPathAgainstBaseDir(t *testing.T) {
+	cfg := Config{
+		BaseDir: "/tmp/kube",
+		Kubeconfigs: map[string]*Kubeconfig{
+			"demo": {
+				Path: "@/target-kubeconfig.yaml",
+			},
+		},
+	}
+
+	runtime, err := NewCompiler().Compile(&cfg)
+	require.NoError(t, err)
+	require.Equal(t, "/tmp/kube/target-kubeconfig.yaml", runtime.Kubeconfigs["demo"].Path)
 }
