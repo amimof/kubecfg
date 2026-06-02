@@ -25,6 +25,27 @@ If you manage more than one cluster, `~/.kube` tends to turn into a junk drawer 
 
 `kubecfg` is useful when you want one source of truth for cluster access instead of hand-editing kubeconfigs or keeping a pile of half-documented files around. It fits well when different environments need different output files, different default contexts, or different login flows, but you still want the result to be plain kubeconfig files on disk.
 
+
+# Highlights
+- Declarative kubeconfig management from a single YAML file
+- Named workspaces for grouping related kubeconfigs
+- Interactive fuzzy selection backed by `fzf`
+- Workspace-level default context resolution
+- External login flow for refreshing credentials on demand
+- Relative kubeconfig paths via `@/` and `--base-dir`
+- Plain files, plain CLI, no daemon or background state
+- Built-in per-field encryption using `age`
+
+# How It Works
+
+`kubecfg` treats `~/.config/kubecfg.yaml` as the source of truth and rendered kubeconfig files as disposable build artifacts. Instead of editing kubeconfig files directly, you describe your intended kubeconfig setup in `kubecfg.yaml`: workspaces, clusters, auth info, contexts, hooks, defaults, and optional encrypted fields. When you render a kubeconfig, `kubecfg` turns that declarative intent into a regular kubeconfig file that tools like `kubectl`, `helm`, and `kubectx` can use.
+
+When you run `kubecfg render`, kubecfg reads the configuration file, resolves the selected workspace, assembles the referenced clusters, users, and contexts, applies any workspace defaults, and writes the rendered kubeconfig to the configured output directory.
+
+Because rendered kubeconfigs are generated outputs, they are intentionally disposable. If a rendered kubeconfig is deleted, overwritten, or becomes stale, you can render it again from the source configuration. 
+
+This lets you manage `kubecfg.yaml` like a dotfile. Version it, sync it across machines, or share it with others to reproduce the same kubeconfig setup consistently.
+
 # Quickstart
 
 1. Install `kubecfg` from GitHub [Releases](https://github.com/amimof/kubecfg/releases)
@@ -74,26 +95,6 @@ If you manage more than one cluster, `~/.kube` tends to turn into a junk drawer 
    Press Enter to render the selected kubeconfig. kubecfg writes the rendered kubeconfig to `base_dir`, which defaults to `~/.kube/`, and updates `~/.kube/config` to point to it.
 
 > See [Examples](/examples/) for more information on how to configure kubecfg in various ways
-
-# Highlights
-- Declarative kubeconfig management from a single YAML file
-- Named workspaces for grouping related kubeconfigs
-- Interactive fuzzy selection backed by `fzf`
-- Workspace-level default context resolution
-- External login flow for refreshing credentials on demand
-- Relative kubeconfig paths via `@/` and `--base-dir`
-- Plain files, plain CLI, no daemon or background state
-- Built-in per-field encryption using `age`
-
-# How It Works
-
-`kubecfg` treats your `kubecfg` config file as the source of truth and the generated kubeconfig files as build artifacts.
-
-When you run `kubecfg`, it reads the YAML config, resolves the selected workspace, assembles the referenced clusters, auth infos, and contexts, applies any workspace default context, and renders a plain kubeconfig file to the configured output path. That means the kubeconfig files on disk are intentionally disposable. They are generated outputs, not the canonical place to manage cluster access. If one gets deleted, overwritten, or goes stale, you can just generate it again from the `kubecfg` config.
-
-The same model applies to credentials. `kubecfg login` can run an external login command, import fresh auth data into the rendered kubeconfig, and write the file back out. The durable definition still lives in the `kubecfg` config; the generated kubeconfig is just the current rendered result.
-
-Encrypted auth fields follow the same rule. You can store values such as `encryptedToken` in `kubecfg.yaml`, keep the age-encrypted payload in source control if needed, and let `kubecfg render` or `kubecfg login` decrypt them during `Compile()`. The rendered kubeconfig on disk still gets the plaintext token that `kubectl` expects.
 
 # Usage
 
