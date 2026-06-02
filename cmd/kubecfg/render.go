@@ -255,40 +255,9 @@ func pickContext(rc *config.RuntimeConfig, workspaceName string) (string, string
 		close(inputChan)
 	}()
 
-	outputChan := make(chan string, 1)
-
-	// Build fzf.Options
-	options, err := fzf.ParseOptions(
-		true,
-		[]string{"--reverse", "--border", "--height=40%"},
-	)
+	selected, err := pick(inputChan)
 	if err != nil {
-		return "", "", fmt.Errorf("fzf exit error %d: %w", fzf.ExitError, err)
-	}
-
-	// Set up input and output channels
-	options.Input = inputChan
-	options.Output = outputChan
-
-	// Run fzf
-	code, err := fzfRun(options)
-	if err != nil {
-		return "", "", fmt.Errorf("fzf exited with code %d: %w", code, err)
-	}
-
-	switch code {
-	case fzf.ExitInterrupt, fzf.ExitNoMatch:
-		return "", "", errNoSelection
-	case fzf.ExitOk:
-	default:
-		return "", "", fmt.Errorf("fzf exited with code %d", code)
-	}
-
-	var selected string
-	select {
-	case selected = <-outputChan:
-	default:
-		return "", "", fmt.Errorf("fzf exited with code %d without a selection", code)
+		return "", "", err
 	}
 
 	ss := strings.Split(selected, "/")
@@ -297,4 +266,44 @@ func pickContext(rc *config.RuntimeConfig, workspaceName string) (string, string
 	}
 
 	return workspaceName, selected, nil
+}
+
+func pick(input chan string) (string, error) {
+	outputChan := make(chan string, 1)
+
+	// Build fzf.Options
+	options, err := fzf.ParseOptions(
+		true,
+		[]string{"--reverse", "--border", "--height=40%", "--query=\"'vgr.yaml\""},
+	)
+	if err != nil {
+		return "", fmt.Errorf("fzf exit error %d: %w", fzf.ExitError, err)
+	}
+
+	// Set up input and output channels
+	options.Input = input
+	options.Output = outputChan
+
+	// Run fzf
+	code, err := fzfRun(options)
+	if err != nil {
+		return "", fmt.Errorf("fzf exited with code %d: %w", code, err)
+	}
+
+	switch code {
+	case fzf.ExitInterrupt, fzf.ExitNoMatch:
+		return "", errNoSelection
+	case fzf.ExitOk:
+	default:
+		return "", fmt.Errorf("fzf exited with code %d", code)
+	}
+
+	var selected string
+	select {
+	case selected = <-outputChan:
+	default:
+		return "", fmt.Errorf("fzf exited with code %d without a selection", code)
+	}
+
+	return selected, nil
 }
