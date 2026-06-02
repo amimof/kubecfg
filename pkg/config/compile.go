@@ -257,7 +257,11 @@ func loadEnvFile(path string) (map[string]string, error) {
 	if err != nil {
 		return res, fmt.Errorf("open env file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			panic(err)
+		}
+	}()
 
 	scanner := bufio.NewScanner(file)
 

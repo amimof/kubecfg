@@ -656,17 +656,17 @@ func RenderLine(w io.Writer, width int) error {
 
 // Println prints msg on new line to stdout
 func Println(msg string) {
-	RenderOnce(os.Stdout, Data{"Msg": msg}, NewContainer(nil, NewElement("{{.Msg}}")))
+	_ = RenderOnce(os.Stdout, Data{"Msg": msg}, NewContainer(nil, NewElement("{{.Msg}}")))
 }
 
 // Printf prints formated text with data as input
 func Printf(msgfmt string, data Data) {
-	RenderOnce(os.Stdout, data, NewContainer(nil, NewElement(msgfmt)))
+	_ = RenderOnce(os.Stdout, data, NewContainer(nil, NewElement(msgfmt)))
 }
 
 // Fprintf is same as Printf but prints to provided writer
 func Fprintf(w io.Writer, msgfmt string, data Data) {
-	RenderOnce(w, data, NewContainer(nil, NewElement(msgfmt)))
+	_ = RenderOnce(w, data, NewContainer(nil, NewElement(msgfmt)))
 }
 
 // RenderOnce renders containers a single time to the provided writer.
