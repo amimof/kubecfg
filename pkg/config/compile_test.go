@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"filippo.io/age"
@@ -231,4 +233,131 @@ func TestCompileResolvesKubeconfigPathAgainstBaseDir(t *testing.T) {
 	runtime, err := NewCompiler().Compile(&cfg)
 	require.NoError(t, err)
 	require.Equal(t, "/tmp/kube/target-kubeconfig.yaml", runtime.Kubeconfigs["demo"].Path)
+}
+
+func TestCompileMergesLoginEnvFileWithoutMutatingProcessEnv(t *testing.T) {
+	tempDir := t.TempDir()
+	envFile := filepath.Join(tempDir, "login.env")
+	err := os.WriteFile(envFile, []byte("FROM_FILE=file-value\nQUOTED=\"quoted value\"\n"), 0o600)
+	require.NoError(t, err)
+
+	_, existedBefore := os.LookupEnv("FROM_FILE")
+	require.False(t, existedBefore)
+
+	cfg := Config{
+		Kubeconfigs: map[string]*Kubeconfig{
+			"demo": {
+				Path: "/tmp/demo",
+				AuthInfos: map[string]*AuthInfo{
+					"user": {
+						Login: &LoginAuth{
+							Command:             "login",
+							Env:                 []string{"FROM_FILE=inline-value", "KEEP=keep-value"},
+							EnvFile:             envFile,
+							CopyFromContextName: "ctx",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	runtime, err := NewCompiler().Compile(&cfg)
+	require.NoError(t, err)
+
+	source, ok := runtime.Kubeconfigs["demo"].AuthInfos["user"].CredentialSource.(*RuntimeLoginCredentialSource)
+	require.True(t, ok)
+	require.Equal(t, "file-value", source.Env["FROM_FILE"])
+	require.Equal(t, "keep-value", source.Env["KEEP"])
+	require.Equal(t, "quoted value", source.Env["QUOTED"])
+	_, existsAfter := os.LookupEnv("FROM_FILE")
+	require.False(t, existsAfter)
+}
+
+func TestCompileMergesExecEnvFileWithEnvFileWinning(t *testing.T) {
+	tempDir := t.TempDir()
+	envFile := filepath.Join(tempDir, "exec.env")
+	err := os.WriteFile(envFile, []byte("FROM_FILE=file-value\nQUOTED='quoted value'\n"), 0o600)
+	require.NoError(t, err)
+
+	cfg := Config{
+		Kubeconfigs: map[string]*Kubeconfig{
+			"demo": {
+				Path: "/tmp/demo",
+				AuthInfos: map[string]*AuthInfo{
+					"user": {
+						Exec: &ExecConfig{
+							Command: "exec",
+							Env: []ExecEnvVar{
+								{Name: "FROM_FILE", Value: "inline-value"},
+								{Name: "KEEP", Value: "keep-value"},
+							},
+							EnvFile: envFile,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	runtime, err := NewCompiler().Compile(&cfg)
+	require.NoError(t, err)
+
+	execCfg := runtime.Kubeconfigs["demo"].AuthInfos["user"].AuthInfo.Exec
+	require.NotNil(t, execCfg)
+	require.ElementsMatch(t, []map[string]string{
+		{"name": "FROM_FILE", "value": "file-value"},
+		{"name": "KEEP", "value": "keep-value"},
+		{"name": "QUOTED", "value": "quoted value"},
+	}, []map[string]string{
+		{"name": execCfg.Env[0].Name, "value": execCfg.Env[0].Value},
+		{"name": execCfg.Env[1].Name, "value": execCfg.Env[1].Value},
+		{"name": execCfg.Env[2].Name, "value": execCfg.Env[2].Value},
+	})
+}
+
+func TestCompileFailsWhenLoginEnvFileIsInvalid(t *testing.T) {
+	tempDir := t.TempDir()
+	envFile := filepath.Join(tempDir, "login.env")
+	err := os.WriteFile(envFile, []byte("BROKEN_LINE\n"), 0o600)
+	require.NoError(t, err)
+
+	cfg := Config{
+		Kubeconfigs: map[string]*Kubeconfig{
+			"demo": {
+				Path: "/tmp/demo",
+				AuthInfos: map[string]*AuthInfo{
+					"user": {
+						Login: &LoginAuth{EnvFile: envFile},
+					},
+				},
+			},
+		},
+	}
+
+	_, err = NewCompiler().Compile(&cfg)
+	require.EqualError(t, err, "authinfo \"user\" login env_file: invalid env line 1: missing '='")
+}
+
+func TestCompileFailsWhenExecEnvFileIsInvalid(t *testing.T) {
+	tempDir := t.TempDir()
+	envFile := filepath.Join(tempDir, "exec.env")
+	err := os.WriteFile(envFile, []byte("BROKEN_LINE\n"), 0o600)
+	require.NoError(t, err)
+
+	cfg := Config{
+		Kubeconfigs: map[string]*Kubeconfig{
+			"demo": {
+				Path: "/tmp/demo",
+				AuthInfos: map[string]*AuthInfo{
+					"user": {
+						Exec: &ExecConfig{EnvFile: envFile},
+					},
+				},
+			},
+		},
+	}
+
+	_, err = NewCompiler().Compile(&cfg)
+	require.EqualError(t, err, "authinfo \"user\" exec env_file: invalid env line 1: missing '='")
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -651,6 +652,21 @@ func RenderLine(w io.Writer, width int) error {
 		}
 	}
 	return nil
+}
+
+// Println prints msg on new line to stdout
+func Println(msg string) {
+	_ = RenderOnce(os.Stdout, Data{"Msg": msg}, NewContainer(nil, NewElement("{{.Msg}}")))
+}
+
+// Printf prints formated text with data as input
+func Printf(msgfmt string, data Data) {
+	_ = RenderOnce(os.Stdout, data, NewContainer(nil, NewElement(msgfmt)))
+}
+
+// Fprintf is same as Printf but prints to provided writer
+func Fprintf(w io.Writer, msgfmt string, data Data) {
+	_ = RenderOnce(w, data, NewContainer(nil, NewElement(msgfmt)))
 }
 
 // RenderOnce renders containers a single time to the provided writer.
