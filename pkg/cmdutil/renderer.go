@@ -194,7 +194,7 @@ func (c *Container) RenderLines(data Data, frameIdx int) []string {
 		if strings.TrimSpace(stripANSI(r.text)) == "" {
 			continue
 		}
-		padded := fmt.Sprintf("  %s  ", r.text)
+		padded := fmt.Sprintf("%s%s%s", strings.Repeat(" ", c.Padding[1]), r.text, strings.Repeat(" ", c.Padding[3]))
 		if visibleLength(padded) > c.Dimensions[0] {
 			padded = truncateWithEllipsis(padded, c.Dimensions[0])
 		}

@@ -195,7 +195,7 @@ func newLoginCommandEncryptedTestConfig(targetPath, encryptedToken string) confi
 	return cfg
 }
 
-func TestRunUseCmdWritesResolvedRuntimePath(t *testing.T) {
+func TestRunRenderCmdWritesResolvedRuntimePath(t *testing.T) {
 	targetDir := t.TempDir()
 	targetPath := filepath.Join(targetDir, "target-kubeconfig.yaml")
 
@@ -204,16 +204,16 @@ func TestRunUseCmdWritesResolvedRuntimePath(t *testing.T) {
 		cfg = originalCfg
 	})
 
-	cfg = newUsePathResolutionTestConfig(targetDir)
+	cfg = newRenderPathResolutionTestConfig(targetDir)
 
-	err := runUseCmd("work", "vgr", true, "", time.Second)
+	err := runRenderCmd("work", "vgr", true, "", time.Second)
 	require.NoError(t, err)
 
 	_, err = os.Stat(targetPath)
 	require.NoError(t, err)
 }
 
-func newUsePathResolutionTestConfig(targetDir string) config.Config {
+func newRenderPathResolutionTestConfig(targetDir string) config.Config {
 	return config.Config{
 		Version: "v1",
 		BaseDir: targetDir,

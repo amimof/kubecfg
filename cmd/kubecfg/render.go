@@ -25,7 +25,7 @@ var (
 	fzfRun         = fzf.Run
 )
 
-func newUseCmd() *cobra.Command {
+func newRenderCmd() *cobra.Command {
 	var (
 		workspaceName string
 		skipLogin     bool
@@ -34,18 +34,18 @@ func newUseCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "use [NAME]",
-		Short: "Select and write a kubeconfig",
-		Long:  `Select a kubeconfig and write it to the base directory.`,
-		Example: `  kubecfg use
-  kubecfg use homelab/mainframe`,
+		Use:   "render [NAME]",
+		Short: "Select and render kubeconfig",
+		Long:  `Select a kubeconfig, render and write it to the base directory.`,
+		Example: `  kubecfg render
+  kubecfg render homelab/mainframe`,
 		Args:         cobra.MaximumNArgs(1),
 		SilenceUsage: true,
 		RunE: withConfig(func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return runUseCmdFzf(workspaceName, skipLogin, identityFile, waitTimeout)
+				return runRenderCmdFzf(workspaceName, skipLogin, identityFile, waitTimeout)
 			}
-			return runUseCmd(workspaceName, args[0], skipLogin, identityFile, waitTimeout)
+			return runRenderCmd(workspaceName, args[0], skipLogin, identityFile, waitTimeout)
 		}),
 	}
 
@@ -82,7 +82,7 @@ func setConfig(baseDir, name string) error {
 	return os.Symlink(name, path.Join(baseDir, "config"))
 }
 
-func runUseCmd(workspaceName, kubeconfigName string, skipLogin bool, identityFile string, waitTimeout time.Duration) error {
+func runRenderCmd(workspaceName, kubeconfigName string, skipLogin bool, identityFile string, waitTimeout time.Duration) error {
 	compiler, err := newCompilerWithOptionalDecryptor(&cfg, identityFile)
 	if err != nil {
 		return err
@@ -139,7 +139,7 @@ func runUseCmd(workspaceName, kubeconfigName string, skipLogin bool, identityFil
 	return nil
 }
 
-func runUseCmdFzf(workspaceName string, skipLogin bool, identityFile string, waitTimeout time.Duration) error {
+func runRenderCmdFzf(workspaceName string, skipLogin bool, identityFile string, waitTimeout time.Duration) error {
 	compiler, err := newCompilerWithOptionalDecryptor(&cfg, identityFile)
 	if err != nil {
 		return err

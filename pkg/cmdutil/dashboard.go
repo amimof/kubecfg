@@ -316,7 +316,7 @@ func NewDashboard(names []string, opts ...Option) (*Dashboard, error) {
 			config: &config.Config{Version: "v1"},
 			container: NewContainer(data, elements...).WithLayout(Layout{
 				Dimensions: [2]int{width, height},
-				Padding:    [4]int{0, 1, 0, 1},
+				Padding:    [4]int{0, 0, 0, 0},
 			}).WithStyle(Style{
 				// Bg: StyleBg256(234),
 			}),

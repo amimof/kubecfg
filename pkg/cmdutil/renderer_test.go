@@ -24,7 +24,7 @@ func TestContainerRenderLinesTruncatesLongPlainText(t *testing.T) {
 	if !strings.Contains(got, "…") {
 		t.Fatalf("expected ellipsis in %q", got)
 	}
-	if got != "  abcde…  " {
+	if got != "abcdefg…  " {
 		t.Fatalf("unexpected truncation result %q", got)
 	}
 }
@@ -55,7 +55,7 @@ func TestContainerRenderLinesTruncatesAnsiTextByVisibleWidth(t *testing.T) {
 	if !strings.Contains(got, "\x1b[") {
 		t.Fatalf("expected ANSI escape sequences in %q", got)
 	}
-	if stripANSI(got) != "  abcde…  " {
+	if stripANSI(got) != "abcdefg…  " {
 		t.Fatalf("unexpected truncation result %q", stripANSI(got))
 	}
 }
@@ -63,7 +63,7 @@ func TestContainerRenderLinesTruncatesAnsiTextByVisibleWidth(t *testing.T) {
 func TestContainerRenderLinesTruncatesMultibyteTextByRunes(t *testing.T) {
 	container := NewContainer(nil,
 		NewElement(`{{ .Value }}`),
-	).WithLayout(Layout{Dimensions: [2]int{8, 0}})
+	).WithLayout(Layout{Dimensions: [2]int{7, 0}})
 
 	lines := container.RenderLines(Data{"Value": "世界世界世界世界"}, 0)
 	if len(lines) != 1 {
@@ -71,10 +71,10 @@ func TestContainerRenderLinesTruncatesMultibyteTextByRunes(t *testing.T) {
 	}
 
 	got := stripANSI(lines[0])
-	if visibleLength(got) != 8 {
-		t.Fatalf("expected visible width 8, got %d (%q)", visibleLength(got), got)
+	if visibleLength(got) != 7 {
+		t.Fatalf("expected visible width 7, got %d (%q)", visibleLength(got), got)
 	}
-	if got != "  世界世…  " {
+	if got != "世界世界…  " {
 		t.Fatalf("unexpected truncation result %q", got)
 	}
 }
