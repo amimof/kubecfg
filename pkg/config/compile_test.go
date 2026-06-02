@@ -235,6 +235,42 @@ func TestCompileResolvesKubeconfigPathAgainstBaseDir(t *testing.T) {
 	require.Equal(t, "/tmp/kube/target-kubeconfig.yaml", runtime.Kubeconfigs["demo"].Path)
 }
 
+func TestCompileExpandsBaseDirWithTilde(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	cfg := Config{
+		BaseDir: "~/.kube",
+		Kubeconfigs: map[string]*Kubeconfig{
+			"demo": {
+				Path: "@/target-kubeconfig.yaml",
+			},
+		},
+	}
+
+	runtime, err := NewCompiler().Compile(&cfg)
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(homeDir, ".kube"), runtime.BaseDir)
+	require.Equal(t, filepath.Join(homeDir, ".kube", "target-kubeconfig.yaml"), runtime.Kubeconfigs["demo"].Path)
+}
+
+func TestCompileExpandsKubeconfigPathWithTilde(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	cfg := Config{
+		Kubeconfigs: map[string]*Kubeconfig{
+			"demo": {
+				Path: "~/target-kubeconfig.yaml",
+			},
+		},
+	}
+
+	runtime, err := NewCompiler().Compile(&cfg)
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(homeDir, "target-kubeconfig.yaml"), runtime.Kubeconfigs["demo"].Path)
+}
+
 func TestCompileMergesLoginEnvFileWithoutMutatingProcessEnv(t *testing.T) {
 	tempDir := t.TempDir()
 	envFile := filepath.Join(tempDir, "login.env")

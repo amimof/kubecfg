@@ -37,9 +37,8 @@ func (c *Compiler) Compile(cfg *Config) (*RuntimeConfig, error) {
 	}
 
 	rt := &RuntimeConfig{
-		Version: cfg.Version,
-		BaseDir: cfg.BaseDir,
-
+		Version:           cfg.Version,
+		BaseDir:           resolvePath("", cfg.BaseDir),
 		Workspaces:        make(map[string]*RuntimeWorkspace),
 		Kubeconfigs:       make(map[string]*RuntimeKubeconfig),
 		KubeconfigAliases: make(map[string]*RuntimeKubeconfig),
@@ -78,7 +77,7 @@ func (c *Compiler) compileKubeconfigs(rt *RuntimeConfig, cfg *Config) error {
 
 		rkc := &RuntimeKubeconfig{
 			Name:             kubeconfigName,
-			Path:             c.resolvePath(rt, kubeconfig.Path),
+			Path:             resolvePath(rt.BaseDir, kubeconfig.Path),
 			Protected:        kubeconfig.Protected,
 			Aliases:          append([]string(nil), kubeconfig.Aliases...),
 			DefaultNamespace: strings.TrimSpace(kubeconfig.DefaultNamespace),
@@ -557,21 +556,28 @@ func resolveKubeconfigDefaultContext(rkc *RuntimeKubeconfig, value string) error
 	return nil
 }
 
-func (c *Compiler) resolvePath(rt *RuntimeConfig, path string) string {
+func resolvePath(base, path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return ""
 	}
 
+	if after, ok := strings.CutPrefix(path, "~"); ok {
+		relative := after
+		userHomeDir, _ := os.UserHomeDir()
+		return filepath.Join(userHomeDir, relative)
+	}
+
+	// @ is alias for base_dir
 	if after, ok := strings.CutPrefix(path, "@"); ok {
 		relative := after
 		relative = strings.TrimPrefix(relative, "/")
 
-		if rt.BaseDir == "" {
+		if base == "" {
 			return relative
 		}
 
-		return filepath.Join(rt.BaseDir, relative)
+		return filepath.Join(base, relative)
 	}
 
 	return path
