@@ -14,6 +14,7 @@
   - [Login pre-hooks](#login-pre-hooks)
   - [Encrypted Fields](#encrypted-fields)
   - [Describing Workspaces](#describing-workspaces)
+  - [Selecting kubeconfigs](#selecting-kubeconfigs)
 - [API Reference](#api-reference)
 - [CLI Reference](#cli-reference)
 - [License](#license)
@@ -186,6 +187,20 @@ If a workspace contains kubeconfigs with encrypted fields, provide an identity f
 
 ```bash
 kubecfg describe workspace homelab --identity-file ~/.config/kubecfg/age.txt
+```
+
+## Selecting Kubeconfigs
+
+Use `kubecfg use` to set a kubeconfig as the active one. The `use` command updates the symlink to `~/.kube/config` pointing it to a rendered kubeconfig. See [Rendering Kubeconfigs](#rendering-kubeconfigs) for more information.
+
+`kubecfg use` searches for kubeconfig files and displays them in a fuzzy finder allowing you to interactively select a kubeconfig to activate.
+
+`kubecfg use` searches for kubeconfigs using this pattern by default `~/.kube/*.yaml`. This can be overridden with `--glob`. 
+
+For example:
+
+```bash
+kubecfg use --glob ~/Projects/kube/*.yaml --glob ~/.kube/conf.d/*.yml
 ```
 
 # API Reference
