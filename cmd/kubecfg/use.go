@@ -134,7 +134,8 @@ func runUseCmd(workspaceName, kubeconfigName string, skipLogin bool, identityFil
 		return err
 	}
 
-	fmt.Printf("Using kubeconfig: %s/%s\n", workspaceName, kubeconfigName)
+	cmdutil.Printf(`{{ "✔" | FgGreen }} Using kubeconfig {{ .Workspace | FgYellow }}/{{ .Kubeconfig | FgCyan }}`, cmdutil.Data{"Workspace": workspaceName, "Kubeconfig": kubeconfigName})
+
 	return nil
 }
 
@@ -175,7 +176,8 @@ func runUseCmdFzf(workspaceName string, skipLogin bool, identityFile string, wai
 	if err := setConfig(runtime.BaseDir, rk.Path); err != nil {
 		return err
 	}
-	fmt.Printf("Using kubeconfig: %s/%s\n", workspace, selected)
+	cmdutil.Printf(`{{ "✔" | FgGreen }} Using kubeconfig {{ .Workspace | FgYellow }}/{{ .Kubeconfig | FgCyan }}`, cmdutil.Data{"Workspace": workspace, "Kubeconfig": selected})
+
 	return nil
 }
 

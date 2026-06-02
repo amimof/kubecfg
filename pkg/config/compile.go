@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -191,29 +192,123 @@ func envSliceToMap(env []string) map[string]string {
 	return m
 }
 
-func resolveCredentialSource(l *LoginAuth) RuntimeCredentialSource {
+func mergeLoginEnv(env []string, fileEnv map[string]string) map[string]string {
+	merged := envSliceToMap(env)
+	for key, value := range fileEnv {
+		merged[key] = value
+	}
+	return merged
+}
+
+func mergeExecEnv(env []ExecEnvVar, fileEnv map[string]string) []ExecEnvVar {
+	merged := make([]ExecEnvVar, 0, len(env)+len(fileEnv))
+	seen := make(map[string]struct{}, len(env)+len(fileEnv))
+
+	for _, entry := range env {
+		if _, ok := fileEnv[entry.Name]; ok {
+			continue
+		}
+		merged = append(merged, entry)
+		seen[entry.Name] = struct{}{}
+	}
+
+	for key, value := range fileEnv {
+		merged = append(merged, ExecEnvVar{Name: key, Value: value})
+		seen[key] = struct{}{}
+	}
+
+	for _, entry := range env {
+		if _, ok := seen[entry.Name]; ok {
+			continue
+		}
+		merged = append(merged, entry)
+	}
+
+	return merged
+}
+
+func resolveCredentialSource(l *LoginAuth) (RuntimeCredentialSource, error) {
 	if l == nil {
-		return nil
+		return nil, nil
+	}
+
+	envMap, err := loadEnvFile(l.EnvFile)
+	if err != nil {
+		return nil, err
 	}
 
 	return &RuntimeLoginCredentialSource{
 		Command: l.Command,
 		Args:    l.Args,
-		Env:     envSliceToMap(l.Env),
+		Env:     mergeLoginEnv(l.Env, envMap),
 		Import: RuntimeLoginImport{
 			Context: l.CopyFromContextName,
 		},
-	}
+	}, nil
 }
 
-func resolveAuthInfosExec(e *ExecConfig) *api.ExecConfig {
-	if e == nil {
-		return nil
+func loadEnvFile(path string) (map[string]string, error) {
+	res := make(map[string]string)
+	if strings.TrimSpace(path) == "" {
+		return res, nil
 	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return res, fmt.Errorf("open env file: %w", err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+
+	lineNumber := 0
+	for scanner.Scan() {
+		lineNumber++
+		line := strings.TrimSpace(scanner.Text())
+
+		// Skip empty lines and comments
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			return res, fmt.Errorf("invalid env line %d: missing '='", lineNumber)
+		}
+
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+
+		if key == "" {
+			return res, fmt.Errorf("invalid env line %d: empty key", lineNumber)
+		}
+
+		// Remove surrounding quotes commonly used in .env files.
+		value = strings.Trim(value, `"'`)
+		res[key] = value
+	}
+
+	if err := scanner.Err(); err != nil {
+		return res, fmt.Errorf("read env file: %w", err)
+	}
+
+	return res, nil
+}
+
+func resolveAuthInfosExec(e *ExecConfig) (*api.ExecConfig, error) {
+	if e == nil {
+		return nil, nil
+	}
+
+	envMap, err := loadEnvFile(e.EnvFile)
+	if err != nil {
+		return nil, err
+	}
+
 	return &api.ExecConfig{
 		Command:                 e.Command,
 		Args:                    e.Args,
-		Env:                     resolveExecEnvVars(e.Env),
+		Env:                     resolveExecEnvVars(mergeExecEnv(e.Env, envMap)),
 		APIVersion:              e.APIVersion,
 		InstallHint:             e.InstallHint,
 		ProvideClusterInfo:      e.ProvideClusterInfo,
@@ -221,7 +316,7 @@ func resolveAuthInfosExec(e *ExecConfig) *api.ExecConfig {
 		InteractiveMode:         api.ExecInteractiveMode(e.InteractiveMode),
 		StdinUnavailable:        e.StdinUnavailable,
 		StdinUnavailableMessage: e.StdinUnavailableMessage,
-	}
+	}, nil
 }
 
 func compileContexts(rkc *RuntimeKubeconfig, kc *Kubeconfig) error {
@@ -506,6 +601,16 @@ func (c *AuthInfoCompiler) Compile(name string, in *AuthInfo) (*RuntimeAuthInfo,
 		return nil, fmt.Errorf("authinfo %q contains encrypted fields; provide --identity-file or a passphrase", name)
 	}
 
+	execConfig, err := resolveAuthInfosExec(in.Exec)
+	if err != nil {
+		return nil, fmt.Errorf("authinfo %q exec env_file: %w", name, err)
+	}
+
+	credentialSource, err := resolveCredentialSource(in.Login)
+	if err != nil {
+		return nil, fmt.Errorf("authinfo %q login env_file: %w", name, err)
+	}
+
 	rai := &RuntimeAuthInfo{
 		Name: name,
 		AuthInfo: &api.AuthInfo{
@@ -525,10 +630,10 @@ func (c *AuthInfoCompiler) Compile(name string, in *AuthInfo) (*RuntimeAuthInfo,
 			Username:             in.Username,
 			Password:             in.Password,
 			AuthProvider:         (*api.AuthProviderConfig)(in.AuthProvider),
-			Exec:                 resolveAuthInfosExec(in.Exec),
+			Exec:                 execConfig,
 			Extensions:           in.Extensions,
 		},
-		CredentialSource: resolveCredentialSource(in.Login),
+		CredentialSource: credentialSource,
 	}
 
 	if in.EncryptedToken != "" {
