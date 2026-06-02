@@ -13,6 +13,8 @@ import (
 	"github.com/amimof/kubecfg/pkg/config"
 )
 
+const defaultDashboardWidth = 80
+
 type Color string
 
 // Field identifies a detail line that can be shown per task entry in the dashboard.
@@ -252,17 +254,6 @@ func (d *Dashboard) IsDone() bool {
 
 // NewDashboard creates the dashboard with one ServiceState per name.
 func NewDashboard(names []string, opts ...Option) (*Dashboard, error) {
-	var width, height int
-	// Get width of terminal
-	if term.IsTerminal(0) {
-		w, h, err := term.GetSize(0)
-		if err != nil {
-			return nil, err
-		}
-		width = w
-		height = h
-	}
-
 	app := NewApp(os.Stdout,
 		map[string]any{},
 	)
@@ -279,6 +270,11 @@ func NewDashboard(names []string, opts ...Option) (*Dashboard, error) {
 
 	for _, opt := range opts {
 		opt(d)
+	}
+
+	width, height, err := dashboardDimensions(d.app.Writer)
+	if err != nil {
+		return nil, err
 	}
 
 	// Resolve effective field set: nil means "all fields" (default behaviour).
@@ -333,4 +329,21 @@ func NewDashboard(names []string, opts ...Option) (*Dashboard, error) {
 	d.services = svcs
 
 	return d, nil
+}
+
+func dashboardDimensions(w io.Writer) (int, int, error) {
+	file, ok := w.(*os.File)
+	if !ok || !term.IsTerminal(int(file.Fd())) {
+		return defaultDashboardWidth, 0, nil
+	}
+
+	width, height, err := term.GetSize(int(file.Fd()))
+	if err != nil {
+		return 0, 0, err
+	}
+	if width <= 0 {
+		width = defaultDashboardWidth
+	}
+
+	return width, height, nil
 }

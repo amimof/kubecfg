@@ -45,6 +45,15 @@ func (c *Compiler) Compile(cfg *Config) (*RuntimeConfig, error) {
 		Contexts:          make(map[string]*RuntimeContextRef),
 	}
 
+	if rt.BaseDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		defaultBaseDir := filepath.Join(home, ".kube")
+		rt.BaseDir = defaultBaseDir
+	}
+
 	if err := c.compileKubeconfigs(rt, cfg); err != nil {
 		return nil, err
 	}
@@ -379,15 +388,6 @@ func (c *Compiler) compileDefaults(rt *RuntimeConfig, cfg *Config) error {
 		}
 
 		rt.DefaultWorkspace = rw
-	}
-
-	if rt.BaseDir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return err
-		}
-		defaultBaseDir := filepath.Join(home, ".kube")
-		rt.BaseDir = defaultBaseDir
 	}
 
 	return nil

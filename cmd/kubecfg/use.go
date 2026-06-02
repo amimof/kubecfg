@@ -13,7 +13,6 @@ import (
 	"github.com/amimof/kubecfg/pkg/command"
 	"github.com/amimof/kubecfg/pkg/config"
 	"github.com/amimof/kubecfg/pkg/service"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
@@ -180,7 +179,7 @@ func runUseCmdFzf(workspaceName string, skipLogin bool, identityFile string, wai
 	return nil
 }
 
-func runLogin(rk *config.RuntimeKubeconfig, waitTimeout time.Duration) error {
+func runLogin(rk *config.RuntimeKubeconfig, waitTimeout time.Duration) (err error) {
 	for name, ctx := range rk.Contexts {
 
 		aui := rk.AuthInfo(ctx.AuthInfo.Name)
@@ -191,7 +190,7 @@ func runLogin(rk *config.RuntimeKubeconfig, waitTimeout time.Duration) error {
 
 			dash, err := cmdutil.NewDashboard([]string{name}, cmdutil.WithHeader("Running login flow for"))
 			if err != nil {
-				logrus.Fatal(err)
+				return err
 			}
 
 			go dash.Loop(cmdCtx)
@@ -203,12 +202,15 @@ func runLogin(rk *config.RuntimeKubeconfig, waitTimeout time.Duration) error {
 				runner := command.NewExecCommandRunner()
 				loginService := service.LoginService{Runner: runner, Stdout: loginStdout, Stderr: loginStderr}
 
-				newAuth, err := loginService.Login(cmdCtx, aui)
-				if err != nil {
-					escapedMsg := strings.ReplaceAll(loginStdout.String(), "\n", "n")
-					dash.FailMsg(0, "Login command returned an error")
+				newAuth, loginErr := loginService.Login(cmdCtx, aui)
+
+				time.Sleep(1 * time.Second)
+
+				if loginErr != nil {
+					escapedMsg := strings.ReplaceAll(loginStderr.String(), "\n", "n")
 					dash.SetPhase(0, escapedMsg)
-					logrus.Fatal(err)
+					dash.FailMsg(0, "Login command returned an error")
+					err = fmt.Errorf("%v: %s", loginErr, escapedMsg)
 				}
 
 				rk.Config.AuthInfos[ctx.AuthInfo.Name] = newAuth
@@ -218,10 +220,14 @@ func runLogin(rk *config.RuntimeKubeconfig, waitTimeout time.Duration) error {
 
 			dash.WaitAnd(cancel)
 
+			if err != nil {
+				return err
+			}
+
 		}
 	}
 
-	return nil
+	return err
 }
 
 func pickContext(rc *config.RuntimeConfig, workspaceName string) (string, string, error) {
