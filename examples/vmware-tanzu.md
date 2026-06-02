@@ -54,4 +54,4 @@ If the auth info contains encrypted fields such as `encryptedToken`, provide the
 kubecfg login tanzu supervisor-prod --identity-file ~/.config/kubecfg/age.txt
 ```
 
-> NOTE! The login flow is by default executed with `kubecfg use` if the `auth_info` contains a `login` flow.
+> NOTE! The login flow is by default executed with `kubecfg render` if the `auth_info` contains a `login` flow.

@@ -101,7 +101,7 @@ func TestPickContextNoSelection(t *testing.T) {
 	}
 }
 
-func TestRunUseCmdFzfNoSelectionIsNoOp(t *testing.T) {
+func TestRunRenderCmdFzfNoSelectionIsNoOp(t *testing.T) {
 	t.Setenv("FZF_DEFAULT_OPTS", "")
 	t.Setenv("FZF_DEFAULT_OPTS_FILE", "")
 
@@ -114,21 +114,21 @@ func TestRunUseCmdFzfNoSelectionIsNoOp(t *testing.T) {
 		fzfRun = originalFzfRun
 	})
 
-	cfg = newUseCommandTestConfig(targetPath)
+	cfg = newRenderCommandTestConfig(targetPath)
 	fzfRun = func(options *fzf.Options) (int, error) {
 		for range options.Input {
 		}
 		return fzf.ExitNoMatch, nil
 	}
 
-	err := runUseCmdFzf("", false, "", time.Second)
+	err := runRenderCmdFzf("", false, "", time.Second)
 	require.NoError(t, err)
 
 	_, err = os.Stat(targetPath)
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
-func TestRunUseCmdFzfUpdatesActiveConfigSymlink(t *testing.T) {
+func TestRunRenderCmdFzfUpdatesActiveConfigSymlink(t *testing.T) {
 	t.Setenv("FZF_DEFAULT_OPTS", "")
 	t.Setenv("FZF_DEFAULT_OPTS_FILE", "")
 
@@ -142,7 +142,7 @@ func TestRunUseCmdFzfUpdatesActiveConfigSymlink(t *testing.T) {
 		fzfRun = originalFzfRun
 	})
 
-	cfg = newUseCommandTestConfig(targetPath)
+	cfg = newRenderCommandTestConfig(targetPath)
 	fzfRun = func(options *fzf.Options) (int, error) {
 		for range options.Input {
 		}
@@ -150,7 +150,7 @@ func TestRunUseCmdFzfUpdatesActiveConfigSymlink(t *testing.T) {
 		return fzf.ExitOk, nil
 	}
 
-	err := runUseCmdFzf("", false, "", time.Second)
+	err := runRenderCmdFzf("", false, "", time.Second)
 	require.NoError(t, err)
 
 	linkPath := filepath.Join(tmpDir, "config")
@@ -161,7 +161,7 @@ func TestRunUseCmdFzfUpdatesActiveConfigSymlink(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestRunUseCmdDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
+func TestRunRenderCmdDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
 	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
 	identityFile, encryptedToken := writeAgeIdentityAndEncryptedToken(t, "command-token")
 
@@ -170,9 +170,9 @@ func TestRunUseCmdDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
 		cfg = originalCfg
 	})
 
-	cfg = newEncryptedUseCommandTestConfig(targetPath, encryptedToken)
+	cfg = newEncryptedRenderCommandTestConfig(targetPath, encryptedToken)
 
-	err := runUseCmd("work", "vgr", true, identityFile, time.Second)
+	err := runRenderCmd("work", "vgr", true, identityFile, time.Second)
 	require.NoError(t, err)
 
 	contents, err := os.ReadFile(targetPath)
@@ -181,7 +181,7 @@ func TestRunUseCmdDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
 	require.NotContains(t, string(contents), encryptedToken)
 }
 
-func TestRunUseCmdFzfDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
+func TestRunRenderCmdFzfDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
 	t.Setenv("FZF_DEFAULT_OPTS", "")
 	t.Setenv("FZF_DEFAULT_OPTS_FILE", "")
 
@@ -196,7 +196,7 @@ func TestRunUseCmdFzfDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
 		fzfRun = originalFzfRun
 	})
 
-	cfg = newEncryptedUseCommandTestConfig(targetPath, encryptedToken)
+	cfg = newEncryptedRenderCommandTestConfig(targetPath, encryptedToken)
 	fzfRun = func(options *fzf.Options) (int, error) {
 		for range options.Input {
 		}
@@ -204,7 +204,7 @@ func TestRunUseCmdFzfDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
 		return fzf.ExitOk, nil
 	}
 
-	err := runUseCmdFzf("", true, identityFile, time.Second)
+	err := runRenderCmdFzf("", true, identityFile, time.Second)
 	require.NoError(t, err)
 
 	contents, err := os.ReadFile(targetPath)
@@ -265,7 +265,7 @@ func newWriteKubeconfigTestConfig() api.Config {
 	}
 }
 
-func newUseCommandTestConfig(targetPath string) config.Config {
+func newRenderCommandTestConfig(targetPath string) config.Config {
 	return config.Config{
 		Version: "v1",
 		BaseDir: filepath.Dir(targetPath),
@@ -294,8 +294,8 @@ func newUseCommandTestConfig(targetPath string) config.Config {
 	}
 }
 
-func newEncryptedUseCommandTestConfig(targetPath, encryptedToken string) config.Config {
-	cfg := newUseCommandTestConfig(targetPath)
+func newEncryptedRenderCommandTestConfig(targetPath, encryptedToken string) config.Config {
+	cfg := newRenderCommandTestConfig(targetPath)
 	cfg.Kubeconfigs["vgr"].AuthInfos["user"] = &config.AuthInfo{EncryptedToken: encryptedToken}
 	return cfg
 }

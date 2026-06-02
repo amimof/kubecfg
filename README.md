@@ -51,11 +51,11 @@ If you manage more than one cluster, `~/.kube` tends to turn into a junk drawer 
 
 3. Start using kubecfg. A few examples on what you can do 
 
-    - `kubecfg use`: List workspaces in a fuzzy finder (fzf). Selecting and pressing enter will synthesize a kubeconfig derived from kubecfg.yaml and create a symlink to `~/.kube/config`. Now you can use `kubectl` as usual.
-    - Run `kubecfg use mainframe`: Use specific kubeconfig in default workspace set by `default_workspace`.
-    - Run `kubecfg use homelab/mainframe`: Use specific kubeconfig in specific workspace.
-    - Run `kubecfg use mainframe --workspace homelab`: Same as previous command.
-    - Run `kubecfg use mainframe --identity-file ~/.config/kubecfg/age.txt`: Decrypt `encryptedToken` and other encrypted auth fields during compile.
+    - `kubecfg render`: List workspaces in a fuzzy finder (fzf). Selecting and pressing enter will synthesize a kubeconfig derived from kubecfg.yaml and create a symlink to `~/.kube/config`. Now you can use `kubectl` as usual.
+    - Run `kubecfg render mainframe`: Render a specific kubeconfig in the default workspace set by `default_workspace`.
+    - Run `kubecfg render homelab/mainframe`: Render a specific kubeconfig in a specific workspace.
+    - Run `kubecfg render mainframe --workspace homelab`: Same as previous command.
+    - Run `kubecfg render mainframe --identity-file ~/.config/kubecfg/age.txt`: Decrypt `encryptedToken` and other encrypted auth fields during compile.
     - Run `kubecfg login mainframe mainframe --identity-file ~/.config/kubecfg/age.txt`: Compile encrypted config, then run the login flow and write the rendered kubeconfig.
 
 > See [Examples](/examples/) for more information on how to configure kubecfg in various ways
@@ -78,7 +78,7 @@ When you run `kubecfg`, it reads the YAML config, resolves the selected workspac
 
 The same model applies to credentials. `kubecfg login` can run an external login command, import fresh auth data into the rendered kubeconfig, and write the file back out. The durable definition still lives in the `kubecfg` config; the generated kubeconfig is just the current rendered result.
 
-Encrypted auth fields follow the same rule. You can store values such as `encryptedToken` in `kubecfg.yaml`, keep the age-encrypted payload in source control if needed, and let `kubecfg use` or `kubecfg login` decrypt them during `Compile()`. The rendered kubeconfig on disk still gets the plaintext token that `kubectl` expects.
+Encrypted auth fields follow the same rule. You can store values such as `encryptedToken` in `kubecfg.yaml`, keep the age-encrypted payload in source control if needed, and let `kubecfg render` or `kubecfg login` decrypt them during `Compile()`. The rendered kubeconfig on disk still gets the plaintext token that `kubectl` expects.
 
 # Encrypted Fields
 
@@ -107,7 +107,7 @@ kubeconfigs:
 Render that kubeconfig with either an age identity file or a passphrase-backed age secret:
 
 ```bash
-kubecfg use mainframe --identity-file ~/.config/kubecfg/age.txt
+kubecfg render mainframe --identity-file ~/.config/kubecfg/age.txt
 kubecfg login mainframe admin --identity-file ~/.config/kubecfg/age.txt
 ```
 
@@ -211,7 +211,7 @@ kubeconfigs:
         token: "<redacted>"
 
         # Encrypted variants are decrypted during Compile() when you run
-        # `kubecfg use` or `kubecfg login` with `--identity-file` or a
+        # `kubecfg render` or `kubecfg login` with `--identity-file` or a
         # passphrase on stdin.
         # encryptedToken: |
         #   -----BEGIN AGE ENCRYPTED FILE-----

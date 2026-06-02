@@ -44,7 +44,7 @@ var (
 		Short: "Manage kubeconfigs as workspaces",
 		Long:  "Manage kubeconfigs from a single config file.",
 		Example: `  kubecfg workspaces
-  kubecfg use`,
+	  kubecfg render`,
 	}
 )
 
@@ -124,7 +124,7 @@ func main() {
 	rootCmd.AddCommand(newVersionCmd())
 	rootCmd.AddCommand(newKubeconfigsCmd())
 	rootCmd.AddCommand(newWorkspacesCmd())
-	rootCmd.AddCommand(newUseCmd())
+	rootCmd.AddCommand(newRenderCmd())
 	rootCmd.AddCommand(newLoginCmd())
 	rootCmd.AddCommand(newEncryptCmd())
 	rootCmd.AddCommand(newDescribeCmd())
