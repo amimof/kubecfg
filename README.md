@@ -4,6 +4,22 @@
 
 `kubecfg` is a small CLI for managing kubeconfigs as named workspaces. It keeps cluster definitions, output paths, and credential refresh hooks in a single YAML file, then renders the kubeconfig files you actually use.
 
+<!--toc:start-->
+- [What It Does](#what-it-does)
+- [Quickstart](#quickstart)
+- [Highlights](#highlights)
+- [How It Works](#how-it-works)
+- [Usage](#usage)
+  - [Rendering kubeconfigs](#rendering-kubeconfigs)
+  - [Login pre-hooks](#login-pre-hooks)
+  - [Encrypted Fields](#encrypted-fields)
+  - [Describing Workspaces](#describing-workspaces)
+- [API Reference](#api-reference)
+- [CLI Reference](#cli-reference)
+- [License](#license)
+<!--toc:end-->
+
+
 # What It Does
 If you manage more than one cluster, `~/.kube` tends to turn into a junk drawer pretty quickly. `kubecfg` gives that sprawl some structure without adding much ceremony. It groups kubeconfigs into workspaces, lets you select them interactively or directly, and can refresh credentials by calling an external login command and importing the resulting auth info.
 
@@ -49,14 +65,13 @@ If you manage more than one cluster, `~/.kube` tends to turn into a junk drawer 
            authinfo: admin
    ```
 
-3. Start using kubecfg. A few examples on what you can do 
+3. Render a kubeconfig
 
-    - `kubecfg render`: List workspaces in a fuzzy finder (fzf). Selecting and pressing enter will synthesize a kubeconfig derived from kubecfg.yaml and create a symlink to `~/.kube/config`. Now you can use `kubectl` as usual.
-    - Run `kubecfg render mainframe`: Render a specific kubeconfig in the default workspace set by `default_workspace`.
-    - Run `kubecfg render homelab/mainframe`: Render a specific kubeconfig in a specific workspace.
-    - Run `kubecfg render mainframe --workspace homelab`: Same as previous command.
-    - Run `kubecfg render mainframe --identity-file ~/.config/kubecfg/age.txt`: Decrypt `encryptedToken` and other encrypted auth fields during compile.
-    - Run `kubecfg login mainframe mainframe --identity-file ~/.config/kubecfg/age.txt`: Compile encrypted config, then run the login flow and write the rendered kubeconfig.
+   ```bash
+   kubecfg render
+   ```
+
+   Press Enter to render the selected kubeconfig. kubecfg writes the rendered kubeconfig to `base_dir`, which defaults to `~/.kube/`, and updates `~/.kube/config` to point to it.
 
 > See [Examples](/examples/) for more information on how to configure kubecfg in various ways
 
@@ -80,9 +95,48 @@ The same model applies to credentials. `kubecfg login` can run an external login
 
 Encrypted auth fields follow the same rule. You can store values such as `encryptedToken` in `kubecfg.yaml`, keep the age-encrypted payload in source control if needed, and let `kubecfg render` or `kubecfg login` decrypt them during `Compile()`. The rendered kubeconfig on disk still gets the plaintext token that `kubectl` expects.
 
-# Encrypted Fields
+# Usage
 
-Use `kubecfg encrypt` to generate an armored age string and paste it into a camelCase encrypted auth field.
+## Rendering kubeconfigs
+
+`kubecfg render` renders one or more kubeconfig definitions from your `~/.config/kubecfg.yaml` configuration file. A kubeconfig definition describes the intent for a kubeconfig. Rendering turns that intent into an actual kubeconfig file on disk.
+
+`kubecfg render mainframe` renders a specific kubeconfig in the default workspace set by `default_workspace`
+
+`kubecfg render homelab/mainframe` renders a specific kubeconfig in a specific workspace.
+
+`kubecfg render mainframe --workspace homelab` same as previous command
+
+`kubecfg render mainframe --identity-file ~/.config/kubecfg/age.txt` decrypts `encryptedToken` and other encrypted auth fields during compile.
+
+## Login pre-hooks
+
+A kubeconfig definition can include a `login` pre-hook. When present, the hook is executed before the kubeconfig is rendered. This is useful for workflows where you need to authenticate before generating or activating a kubeconfig, for example with OIDC, cloud provider CLIs, or custom login commands.
+
+Example:
+```yaml
+kubeconfigs:
+  company:
+    path: "@/company.yaml"
+    auth_infos:
+      amimof:
+        login:
+          command: kubectl
+          args:
+            - oidc-login
+            - get-token
+          copy_from_context_name: imported
+    contexts:
+      production:
+        cluster: company
+        authInfo: amimof
+```
+
+When you run `kubecfg render company`, the login hook runs first. The command writes credentials to the kubeconfig path provided in `$KUBECONFIG`, and `kubecfg` imports the auth info referenced by `login.copy_from_context_name` before rendering and activating the final kubeconfig.
+
+## Encrypted Fields
+
+Use `kubecfg encrypt` to generate an armored age string and paste it into a encrypted auth field.
 
 ```bash
 kubecfg encrypt --public-key age1...
@@ -112,6 +166,26 @@ kubecfg login mainframe admin --identity-file ~/.config/kubecfg/age.txt
 ```
 
 If both `token` and `encryptedToken` are set, `encryptedToken` wins.
+
+## Describing Workspaces
+
+Use `kubecfg describe workspace` to inspect a workspace and the kubeconfigs defined in it. This is useful when you want to understand what `kubecfg` will render before selecting or activating a kubeconfig.
+
+```bash
+kubecfg describe workspace
+```
+
+To inspect a single workspace, pass the workspace name:
+
+```bash
+kubecfg describe workspace homelab
+```
+
+If a workspace contains kubeconfigs with encrypted fields, provide an identity file when describing it:
+
+```bash
+kubecfg describe workspace homelab --identity-file ~/.config/kubecfg/age.txt
+```
 
 # API Reference
 
@@ -143,18 +217,6 @@ workspaces:
       - basic-auth
       - legacy-auth-provider
 
-    # Current decoder expects camelCase here.
-    # Accepted forms:
-    # - "<workspace>/<kubeconfig>/<context>"
-    # - "<kubeconfig>/<context>"
-    # - "<context>" when unique inside this workspace
-    # Overrides kubeconfigs.<name>.current_context when both are set.
-    defaultContext: static-token/admin
-
-    # Workspace-level fallback namespace. Stored in runtime config, but not
-    # currently materialized into generated kubeconfigs by kubecfg.
-    # defaultNamespace: default
-
 kubeconfigs:
   static-token:
     # Absolute path, or "@/..." relative to --base-dir.
@@ -162,7 +224,6 @@ kubeconfigs:
 
     # Local context name to render as current-context for this kubeconfig.
     # This is resolved only within static-token.contexts.
-    # workspace.defaultContext overrides it when both are set.
     current_context: admin
 
     # Present in the schema, but not currently enforced by CLI commands.
@@ -498,7 +559,7 @@ kubeconfigs:
 
 > **Note**: This project is under active early development and unstable. Features, API, and behavior are subject to change at any time and may not be backwards compatible between versions. Expect breaking changes.
 
-# CLI
+# CLI Reference
 Use `kubecfg --help` for CLI usage
 
 # License
