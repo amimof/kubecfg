@@ -194,7 +194,7 @@ func (c *Container) RenderLines(data Data, frameIdx int) []string {
 			continue
 		}
 		padded := fmt.Sprintf("  %s  ", r.text)
-		if len(padded) >= c.Dimensions[0] {
+		if visibleLength(padded) > c.Dimensions[0] {
 			padded = truncateWithEllipsis(padded, c.Dimensions[0])
 		}
 		lines = append(lines, c.applyBgColor(padded, c.Dimensions[0]))
@@ -507,7 +507,7 @@ func truncateToWidth(s string, width int) string {
 
 // visibleLength returns the visible character count (excluding ANSI codes)
 func visibleLength(s string) int {
-	return len(stripANSI(s))
+	return utf8.RuneCountInString(stripANSI(s))
 }
 
 // padRight pads a string to a fixed width (accounting for ANSI codes)

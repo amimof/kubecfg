@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/amimof/kubecfg/pkg/cmdutil"
 	"github.com/amimof/kubecfg/pkg/command"
 	"github.com/amimof/kubecfg/pkg/config"
 	"github.com/amimof/kubecfg/pkg/service"
@@ -29,6 +30,7 @@ func newUseCmd() *cobra.Command {
 		workspaceName string
 		skipLogin     bool
 		identityFile  string
+		waitTimeout   time.Duration
 	)
 
 	cmd := &cobra.Command{
@@ -41,15 +43,16 @@ func newUseCmd() *cobra.Command {
 		SilenceUsage: true,
 		RunE: withConfig(func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return runUseCmdFzf(workspaceName, skipLogin, identityFile)
+				return runUseCmdFzf(workspaceName, skipLogin, identityFile, waitTimeout)
 			}
-			return runUseCmd(workspaceName, args[0], skipLogin, identityFile)
+			return runUseCmd(workspaceName, args[0], skipLogin, identityFile, waitTimeout)
 		}),
 	}
 
 	cmd.PersistentFlags().StringVarP(&workspaceName, "workspace", "w", "", "Workspace")
 	cmd.PersistentFlags().StringVar(&identityFile, "identity-file", "", "Age identity used to decrypt fields in configuration")
 	cmd.PersistentFlags().BoolVar(&skipLogin, "skip-login", false, "Skip execution of login flow prior to kubeconfig rendering")
+	cmd.PersistentFlags().DurationVar(&waitTimeout, "timeout", time.Second*30, "How long in seconds to wait for login opearation to finish before giving up")
 
 	return cmd
 }
@@ -66,7 +69,7 @@ func writeKubeconfig(path string, kubeconfig api.Config) error {
 }
 
 // setConfig creates a new symlink to a kubeconfigfile overwriting any existing one
-func setConfig(name string) error {
+func setConfig(baseDir, name string) error {
 	dst := path.Join(baseDir, "config")
 	// Remove existing symlink to config so we don't run into an error
 	if _, err := os.Stat(dst); !os.IsNotExist(err) {
@@ -79,7 +82,7 @@ func setConfig(name string) error {
 	return os.Symlink(name, path.Join(baseDir, "config"))
 }
 
-func runUseCmd(workspaceName, kubeconfigName string, skipLogin bool, identityFile string) error {
+func runUseCmd(workspaceName, kubeconfigName string, skipLogin bool, identityFile string, waitTimeout time.Duration) error {
 	compiler, err := newCompilerWithOptionalDecryptor(&cfg, identityFile)
 	if err != nil {
 		return err
@@ -118,7 +121,7 @@ func runUseCmd(workspaceName, kubeconfigName string, skipLogin bool, identityFil
 	}
 
 	if !skipLogin {
-		if err := runLogin(rk); err != nil {
+		if err := runLogin(rk, waitTimeout); err != nil {
 			return err
 		}
 	}
@@ -127,7 +130,7 @@ func runUseCmd(workspaceName, kubeconfigName string, skipLogin bool, identityFil
 		return err
 	}
 
-	if err := setConfig(rk.Path); err != nil {
+	if err := setConfig(runtime.BaseDir, rk.Path); err != nil {
 		return err
 	}
 
@@ -135,7 +138,7 @@ func runUseCmd(workspaceName, kubeconfigName string, skipLogin bool, identityFil
 	return nil
 }
 
-func runUseCmdFzf(workspaceName string, skipLogin bool, identityFile string) error {
+func runUseCmdFzf(workspaceName string, skipLogin bool, identityFile string, waitTimeout time.Duration) error {
 	compiler, err := newCompilerWithOptionalDecryptor(&cfg, identityFile)
 	if err != nil {
 		return err
@@ -161,7 +164,7 @@ func runUseCmdFzf(workspaceName string, skipLogin bool, identityFile string) err
 	}
 
 	if !skipLogin {
-		if err := runLogin(rk); err != nil {
+		if err := runLogin(rk, waitTimeout); err != nil {
 			return err
 		}
 	}
@@ -169,34 +172,62 @@ func runUseCmdFzf(workspaceName string, skipLogin bool, identityFile string) err
 	if err := writeKubeconfig(rk.Path, *rk.Config); err != nil {
 		return err
 	}
-	if err := setConfig(rk.Path); err != nil {
+	if err := setConfig(runtime.BaseDir, rk.Path); err != nil {
 		return err
 	}
 	fmt.Printf("Using kubeconfig: %s/%s\n", workspace, selected)
 	return nil
 }
 
-func runLogin(rk *config.RuntimeKubeconfig) error {
+func runLogin(rk *config.RuntimeKubeconfig, waitTimeout time.Duration) (err error) {
 	for name, ctx := range rk.Contexts {
 
 		aui := rk.AuthInfo(ctx.AuthInfo.Name)
 
 		if aui.CredentialSource != nil {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			cmdCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
-			runner := command.NewExecCommandRunner()
-			loginService := service.LoginService{Runner: runner, Stdout: loginStdout, Stderr: loginStderr}
-			newAuth, err := loginService.Login(ctx, aui)
+			dash, err := cmdutil.NewDashboard([]string{name}, cmdutil.WithHeader("Running login flow for"))
 			if err != nil {
 				return err
 			}
 
-			rk.Config.AuthInfos[name] = newAuth
+			go dash.Loop(cmdCtx)
+
+			// Fire off start operations concurrently
+			go func() {
+				dash.FailAfterMsg(0, waitTimeout, "timeout reached")
+
+				runner := command.NewExecCommandRunner()
+				loginService := service.LoginService{Runner: runner, Stdout: loginStdout, Stderr: loginStderr}
+
+				newAuth, loginErr := loginService.Login(cmdCtx, aui)
+
+				time.Sleep(1 * time.Second)
+
+				if loginErr != nil {
+					escapedMsg := strings.ReplaceAll(loginStderr.String(), "\n", "n")
+					dash.SetPhase(0, escapedMsg)
+					dash.FailMsg(0, "Login command returned an error")
+					err = fmt.Errorf("%v: %s", loginErr, escapedMsg)
+				}
+
+				rk.Config.AuthInfos[ctx.AuthInfo.Name] = newAuth
+
+				dash.DoneMsg(0, fmt.Sprintf("Successfully logged in user %s", ctx.AuthInfo.Name))
+			}()
+
+			dash.WaitAnd(cancel)
+
+			if err != nil {
+				return err
+			}
+
 		}
 	}
 
-	return nil
+	return err
 }
 
 func pickContext(rc *config.RuntimeConfig, workspaceName string) (string, string, error) {

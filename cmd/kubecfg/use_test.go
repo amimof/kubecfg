@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"filippo.io/age"
 	"github.com/amimof/kubecfg/pkg/config"
@@ -107,23 +108,20 @@ func TestRunUseCmdFzfNoSelectionIsNoOp(t *testing.T) {
 	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
 
 	originalCfg := cfg
-	originalBaseDir := baseDir
 	originalFzfRun := fzfRun
 	t.Cleanup(func() {
 		cfg = originalCfg
-		baseDir = originalBaseDir
 		fzfRun = originalFzfRun
 	})
 
 	cfg = newUseCommandTestConfig(targetPath)
-	baseDir = filepath.Dir(targetPath)
 	fzfRun = func(options *fzf.Options) (int, error) {
 		for range options.Input {
 		}
 		return fzf.ExitNoMatch, nil
 	}
 
-	err := runUseCmdFzf("", false, "")
+	err := runUseCmdFzf("", false, "", time.Second)
 	require.NoError(t, err)
 
 	_, err = os.Stat(targetPath)
@@ -138,16 +136,13 @@ func TestRunUseCmdFzfUpdatesActiveConfigSymlink(t *testing.T) {
 	targetPath := filepath.Join(tmpDir, "target-kubeconfig.yaml")
 
 	originalCfg := cfg
-	originalBaseDir := baseDir
 	originalFzfRun := fzfRun
 	t.Cleanup(func() {
 		cfg = originalCfg
-		baseDir = originalBaseDir
 		fzfRun = originalFzfRun
 	})
 
 	cfg = newUseCommandTestConfig(targetPath)
-	baseDir = tmpDir
 	fzfRun = func(options *fzf.Options) (int, error) {
 		for range options.Input {
 		}
@@ -155,10 +150,10 @@ func TestRunUseCmdFzfUpdatesActiveConfigSymlink(t *testing.T) {
 		return fzf.ExitOk, nil
 	}
 
-	err := runUseCmdFzf("", false, "")
+	err := runUseCmdFzf("", false, "", time.Second)
 	require.NoError(t, err)
 
-	linkPath := filepath.Join(baseDir, "config")
+	linkPath := filepath.Join(tmpDir, "config")
 	linkedTo, err := os.Readlink(linkPath)
 	require.NoError(t, err)
 	require.Equal(t, targetPath, linkedTo)
@@ -171,16 +166,13 @@ func TestRunUseCmdDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
 	identityFile, encryptedToken := writeAgeIdentityAndEncryptedToken(t, "command-token")
 
 	originalCfg := cfg
-	originalBaseDir := baseDir
 	t.Cleanup(func() {
 		cfg = originalCfg
-		baseDir = originalBaseDir
 	})
 
 	cfg = newEncryptedUseCommandTestConfig(targetPath, encryptedToken)
-	baseDir = filepath.Dir(targetPath)
 
-	err := runUseCmd("work", "vgr", true, identityFile)
+	err := runUseCmd("work", "vgr", true, identityFile, time.Second)
 	require.NoError(t, err)
 
 	contents, err := os.ReadFile(targetPath)
@@ -198,16 +190,13 @@ func TestRunUseCmdFzfDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
 	identityFile, encryptedToken := writeAgeIdentityAndEncryptedToken(t, "fzf-token")
 
 	originalCfg := cfg
-	originalBaseDir := baseDir
 	originalFzfRun := fzfRun
 	t.Cleanup(func() {
 		cfg = originalCfg
-		baseDir = originalBaseDir
 		fzfRun = originalFzfRun
 	})
 
 	cfg = newEncryptedUseCommandTestConfig(targetPath, encryptedToken)
-	baseDir = tmpDir
 	fzfRun = func(options *fzf.Options) (int, error) {
 		for range options.Input {
 		}
@@ -215,7 +204,7 @@ func TestRunUseCmdFzfDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
 		return fzf.ExitOk, nil
 	}
 
-	err := runUseCmdFzf("", true, identityFile)
+	err := runUseCmdFzf("", true, identityFile, time.Second)
 	require.NoError(t, err)
 
 	contents, err := os.ReadFile(targetPath)
@@ -279,6 +268,7 @@ func newWriteKubeconfigTestConfig() api.Config {
 func newUseCommandTestConfig(targetPath string) config.Config {
 	return config.Config{
 		Version: "v1",
+		BaseDir: filepath.Dir(targetPath),
 		Workspaces: map[string]*config.Workspace{
 			"work": {
 				Kubeconfigs: []string{"vgr"},

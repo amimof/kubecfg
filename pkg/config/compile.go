@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -9,7 +10,6 @@ import (
 )
 
 type Compiler struct {
-	BaseDir   string
 	Decryptor SecretDecryptor
 }
 
@@ -21,10 +21,8 @@ func WithDecryptor(d SecretDecryptor) CompilerOption {
 	}
 }
 
-func NewCompiler(baseDir string, opts ...CompilerOption) *Compiler {
-	c := &Compiler{
-		BaseDir: baseDir,
-	}
+func NewCompiler(opts ...CompilerOption) *Compiler {
+	c := &Compiler{}
 
 	for _, opt := range opts {
 		opt(c)
@@ -39,11 +37,21 @@ func (c *Compiler) Compile(cfg *Config) (*RuntimeConfig, error) {
 
 	rt := &RuntimeConfig{
 		Version: cfg.Version,
+		BaseDir: cfg.BaseDir,
 
 		Workspaces:        make(map[string]*RuntimeWorkspace),
 		Kubeconfigs:       make(map[string]*RuntimeKubeconfig),
 		KubeconfigAliases: make(map[string]*RuntimeKubeconfig),
 		Contexts:          make(map[string]*RuntimeContextRef),
+	}
+
+	if rt.BaseDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		defaultBaseDir := filepath.Join(home, ".kube")
+		rt.BaseDir = defaultBaseDir
 	}
 
 	if err := c.compileKubeconfigs(rt, cfg); err != nil {
@@ -69,7 +77,7 @@ func (c *Compiler) compileKubeconfigs(rt *RuntimeConfig, cfg *Config) error {
 
 		rkc := &RuntimeKubeconfig{
 			Name:             kubeconfigName,
-			Path:             c.resolvePath(kubeconfig.Path),
+			Path:             c.resolvePath(rt, kubeconfig.Path),
 			Protected:        kubeconfig.Protected,
 			Aliases:          append([]string(nil), kubeconfig.Aliases...),
 			DefaultNamespace: strings.TrimSpace(kubeconfig.DefaultNamespace),
@@ -450,7 +458,7 @@ func resolveKubeconfigDefaultContext(rkc *RuntimeKubeconfig, value string) error
 	return nil
 }
 
-func (c *Compiler) resolvePath(path string) string {
+func (c *Compiler) resolvePath(rt *RuntimeConfig, path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return ""
@@ -460,11 +468,11 @@ func (c *Compiler) resolvePath(path string) string {
 		relative := after
 		relative = strings.TrimPrefix(relative, "/")
 
-		if c.BaseDir == "" {
+		if rt.BaseDir == "" {
 			return relative
 		}
 
-		return filepath.Join(c.BaseDir, relative)
+		return filepath.Join(rt.BaseDir, relative)
 	}
 
 	return path

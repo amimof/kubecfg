@@ -13,13 +13,15 @@ import (
 	"github.com/amimof/kubecfg/pkg/config"
 )
 
+const defaultDashboardWidth = 80
+
 type Color string
 
 // Field identifies a detail line that can be shown per task entry in the dashboard.
 type Field int
 
 const (
-	FieldPhase Field = iota
+	FieldError Field = iota
 	FieldNode
 	FieldPid
 	FieldID
@@ -31,14 +33,11 @@ const (
 // Detail lines are suppressed when the entry is in a terminal state (failed or
 // done) so that only the status line remains visible.
 var fieldTemplate = map[Field]string{
-	FieldPhase:  `{{- if and (not .Container.Failed) (not .Container.Done) }}  Phase: {{ if eq .Container.Phase "Running" }}{{ .Container.Phase | FgGreen }}{{else}}{{ .Container.Phase | FgYellow }}{{end}}{{- end}}`,
-	FieldNode:   `  Node: {{ .Container.Node }}`,
-	FieldPid:    `  Pid: {{ .Container.Pid }}`,
-	FieldReason: `{{- if and (not .Container.Failed) (not .Container.Done) }}  Error: {{ .Container.Reason | FgBlue }}{{- end}}`,
+	FieldError: `{{- if ne .Container.Error "" }}  {{ "Error:" | FgRed }} {{ .Container.Error }} {{- end}}`,
 }
 
 // defaultFields is the ordered set of fields shown when WithFields is not called.
-var defaultFields = []Field{FieldPhase, FieldNode, FieldPid, FieldReason}
+var defaultFields = []Field{FieldError, FieldNode, FieldPid, FieldReason}
 
 type Option func(*Dashboard)
 
@@ -136,15 +135,7 @@ func (d *Dashboard) AddTask(t *config.Config) int {
 func (d *Dashboard) SetTask(idx int, t *config.Config) {
 	d.Update(idx, func(s *ServiceState) {
 		s.config = t
-		s.container.SetMetadata(map[string]any{
-			// "Name":   t.GetMeta().GetName(),
-			// "Phase":  t.GetStatus().GetPhase().GetValue(),
-			// "Node":   t.GetStatus().GetNode().GetValue(),
-			// "Pid":    t.GetStatus().GetPid().GetValue(),
-			// "ID":     t.GetStatus().GetId().GetValue(),
-			// "Image":  t.GetConfig().GetImage(),
-			// "Reason": t.GetStatus().GetReason(),
-		})
+		s.container.SetMetadata(map[string]any{})
 	})
 }
 
@@ -185,6 +176,12 @@ func (d *Dashboard) FailMsg(idx int, msg string) {
 		s.Done = true
 		s.Failed = true
 		s.FailedMsg = msg
+	})
+}
+
+func (d *Dashboard) SetPhase(idx int, msg string) {
+	d.Update(idx, func(s *ServiceState) {
+		s.container.UpdateMetadata("Error", msg)
 	})
 }
 
@@ -257,17 +254,6 @@ func (d *Dashboard) IsDone() bool {
 
 // NewDashboard creates the dashboard with one ServiceState per name.
 func NewDashboard(names []string, opts ...Option) (*Dashboard, error) {
-	var width, height int
-	// Get width of terminal
-	if term.IsTerminal(0) {
-		w, h, err := term.GetSize(0)
-		if err != nil {
-			return nil, err
-		}
-		width = w
-		height = h
-	}
-
 	app := NewApp(os.Stdout,
 		map[string]any{},
 	)
@@ -284,6 +270,11 @@ func NewDashboard(names []string, opts ...Option) (*Dashboard, error) {
 
 	for _, opt := range opts {
 		opt(d)
+	}
+
+	width, height, err := dashboardDimensions(d.app.Writer)
+	if err != nil {
+		return nil, err
 	}
 
 	// Resolve effective field set: nil means "all fields" (default behaviour).
@@ -306,12 +297,7 @@ func NewDashboard(names []string, opts ...Option) (*Dashboard, error) {
 			"Failed":    false,
 			"FailedMsg": "",
 			"Name":      n,
-			"Phase":     "",
-			"Node":      "",
-			"Pid":       "",
-			"ID":        "",
-			"Image":     "",
-			"Reason":    "",
+			"Error":     "",
 		}
 
 		// Status line is always present.
@@ -343,4 +329,21 @@ func NewDashboard(names []string, opts ...Option) (*Dashboard, error) {
 	d.services = svcs
 
 	return d, nil
+}
+
+func dashboardDimensions(w io.Writer) (int, int, error) {
+	file, ok := w.(*os.File)
+	if !ok || !term.IsTerminal(int(file.Fd())) {
+		return defaultDashboardWidth, 0, nil
+	}
+
+	width, height, err := term.GetSize(int(file.Fd()))
+	if err != nil {
+		return 0, 0, err
+	}
+	if width <= 0 {
+		width = defaultDashboardWidth
+	}
+
+	return width, height, nil
 }

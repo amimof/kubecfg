@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/amimof/kubecfg/pkg/config"
 	"github.com/stretchr/testify/require"
@@ -18,18 +19,15 @@ func TestRunLoginCmdStreamsSubprocessOutputAndImportsAuthInfo(t *testing.T) {
 	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
 
 	originalCfg := cfg
-	originalBaseDir := baseDir
 	originalStdout := loginStdout
 	originalStderr := loginStderr
 	t.Cleanup(func() {
 		cfg = originalCfg
-		baseDir = originalBaseDir
 		loginStdout = originalStdout
 		loginStderr = originalStderr
 	})
 
 	cfg = newLoginCommandTestConfig(targetPath)
-	baseDir = filepath.Dir(targetPath)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -56,22 +54,19 @@ func TestRunLoginCmdDoesNotMutateCredentialSourceEnv(t *testing.T) {
 	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
 
 	originalCfg := cfg
-	originalBaseDir := baseDir
 	originalStdout := loginStdout
 	originalStderr := loginStderr
 	t.Cleanup(func() {
 		cfg = originalCfg
-		baseDir = originalBaseDir
 		loginStdout = originalStdout
 		loginStderr = originalStderr
 	})
 
 	cfg = newLoginCommandTestConfig(targetPath)
-	baseDir = filepath.Dir(targetPath)
-	loginStdout = io.Discard
-	loginStderr = io.Discard
+	loginStdout = &bytes.Buffer{}
+	loginStderr = &bytes.Buffer{}
 
-	compiler := config.NewCompiler(baseDir)
+	compiler := config.NewCompiler()
 	runtime, err := compiler.Compile(&cfg)
 	require.NoError(t, err)
 
@@ -90,20 +85,17 @@ func TestRunLoginCmdDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
 	identityFile, encryptedToken := writeAgeIdentityAndEncryptedToken(t, "login-token")
 
 	originalCfg := cfg
-	originalBaseDir := baseDir
 	originalStdout := loginStdout
 	originalStderr := loginStderr
 	t.Cleanup(func() {
 		cfg = originalCfg
-		baseDir = originalBaseDir
 		loginStdout = originalStdout
 		loginStderr = originalStderr
 	})
 
 	cfg = newLoginCommandEncryptedTestConfig(targetPath, encryptedToken)
-	baseDir = filepath.Dir(targetPath)
-	loginStdout = io.Discard
-	loginStderr = io.Discard
+	loginStdout = &bytes.Buffer{}
+	loginStderr = &bytes.Buffer{}
 
 	err := runLoginCmd("work", "vgr", "ctx1", identityFile)
 	require.NoError(t, err)
@@ -164,6 +156,7 @@ func TestHelperProcessLoginCommand(t *testing.T) {
 func newLoginCommandTestConfig(targetPath string) config.Config {
 	return config.Config{
 		Version: "v1",
+		BaseDir: filepath.Dir(targetPath),
 		Workspaces: map[string]*config.Workspace{
 			"work": {
 				Kubeconfigs: []string{"vgr"},
@@ -200,4 +193,51 @@ func newLoginCommandEncryptedTestConfig(targetPath, encryptedToken string) confi
 	cfg := newLoginCommandTestConfig(targetPath)
 	cfg.Kubeconfigs["vgr"].AuthInfos["login-user"].EncryptedToken = encryptedToken
 	return cfg
+}
+
+func TestRunUseCmdWritesResolvedRuntimePath(t *testing.T) {
+	targetDir := t.TempDir()
+	targetPath := filepath.Join(targetDir, "target-kubeconfig.yaml")
+
+	originalCfg := cfg
+	t.Cleanup(func() {
+		cfg = originalCfg
+	})
+
+	cfg = newUsePathResolutionTestConfig(targetDir)
+
+	err := runUseCmd("work", "vgr", true, "", time.Second)
+	require.NoError(t, err)
+
+	_, err = os.Stat(targetPath)
+	require.NoError(t, err)
+}
+
+func newUsePathResolutionTestConfig(targetDir string) config.Config {
+	return config.Config{
+		Version: "v1",
+		BaseDir: targetDir,
+		Workspaces: map[string]*config.Workspace{
+			"work": {
+				Kubeconfigs: []string{"vgr"},
+			},
+		},
+		Kubeconfigs: map[string]*config.Kubeconfig{
+			"vgr": {
+				Path: "@/target-kubeconfig.yaml",
+				Clusters: map[string]*config.Cluster{
+					"cluster": {Server: "https://example.com"},
+				},
+				AuthInfos: map[string]*config.AuthInfo{
+					"user": {},
+				},
+				Contexts: map[string]*config.Context{
+					"context": {
+						Cluster:  "cluster",
+						AuthInfo: "user",
+					},
+				},
+			},
+		},
+	}
 }

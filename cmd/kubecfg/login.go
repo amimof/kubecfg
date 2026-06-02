@@ -1,10 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"os"
 	"time"
 
 	"github.com/amimof/kubecfg/pkg/command"
@@ -13,8 +12,8 @@ import (
 )
 
 var (
-	loginStdout io.Writer = os.Stdout
-	loginStderr io.Writer = os.Stderr
+	loginStdout *bytes.Buffer = &bytes.Buffer{}
+	loginStderr *bytes.Buffer = &bytes.Buffer{}
 )
 
 func newLoginCmd() *cobra.Command {

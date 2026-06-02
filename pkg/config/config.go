@@ -9,6 +9,7 @@ type Config struct {
 	DefaultWorkspace string                 `mapstructure:"default_workspace,omitempty" json:"default_workspace,omitempty" yaml:"default_workspace,omitempty"`
 	Workspaces       map[string]*Workspace  `mapstructure:"workspaces,omitempty" json:"workspaces,omitempty" yaml:"workspaces,omitempty"`
 	Kubeconfigs      map[string]*Kubeconfig `mapstructure:"kubeconfigs,omitempty" json:"kubeconfigs,omitempty" yaml:"kubeconfigs,omitempty"`
+	BaseDir          string                 `mapstructure:"base_dir,omitempty" json:"base_dir,omitempty" yaml:"base_dir,omitempty"`
 }
 
 type Workspace struct {

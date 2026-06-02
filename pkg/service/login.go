@@ -50,9 +50,9 @@ func (s *LoginService) loginWithCommand(ctx context.Context, _ *config.RuntimeAu
 		if err := tmpFile.Close(); err != nil {
 			panic(err)
 		}
-		if err := os.Remove(tmpFile.Name()); err != nil {
-			panic(err)
-		}
+		// if err := os.Remove(tmpFile.Name()); err != nil {
+		// 	panic(err)
+		// }
 	}()
 
 	// Add var so that login uses temporary kubeconfig file during login

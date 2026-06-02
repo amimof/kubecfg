@@ -28,7 +28,7 @@ func newWorkspacesCmd() *cobra.Command {
 }
 
 func runWorkspacesCmd(stdout io.Writer) error {
-	compiler := config.NewCompiler(baseDir)
+	compiler := config.NewCompiler()
 
 	runtime, err := compiler.Compile(&cfg)
 	if err != nil {
