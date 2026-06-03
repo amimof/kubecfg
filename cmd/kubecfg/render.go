@@ -274,7 +274,7 @@ func pick(input chan string) (string, error) {
 	// Build fzf.Options
 	options, err := fzf.ParseOptions(
 		true,
-		[]string{"--reverse", "--border", "--height=40%", "--query=\"'vgr.yaml\""},
+		[]string{"--reverse", "--border", "--height=40%"},
 	)
 	if err != nil {
 		return "", fmt.Errorf("fzf exit error %d: %w", fzf.ExitError, err)
