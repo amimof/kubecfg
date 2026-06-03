@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -43,9 +45,9 @@ func newRenderCmd() *cobra.Command {
 		SilenceUsage: true,
 		RunE: withConfig(func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return runRenderCmdFzf(workspaceName, skipLogin, identityFile, waitTimeout)
+				return runRenderCmdFzf(cmd.Context(), workspaceName, skipLogin, identityFile, waitTimeout)
 			}
-			return runRenderCmd(workspaceName, args[0], skipLogin, identityFile, waitTimeout)
+			return runRenderCmd(cmd.Context(), workspaceName, args[0], skipLogin, identityFile, waitTimeout)
 		}),
 	}
 
@@ -57,8 +59,8 @@ func newRenderCmd() *cobra.Command {
 	return cmd
 }
 
-func writeKubeconfig(path string, kubeconfig api.Config) error {
-	data, err := clientcmd.Write(kubeconfig)
+func writeKubeconfig(path string, kubeconfig *api.Config) error {
+	data, err := clientcmd.Write(*kubeconfig)
 	if err != nil {
 		return err
 	}
@@ -82,7 +84,7 @@ func setConfig(baseDir, name string) error {
 	return os.Symlink(name, path.Join(baseDir, "config"))
 }
 
-func runRenderCmd(workspaceName, kubeconfigName string, skipLogin bool, identityFile string, waitTimeout time.Duration) error {
+func runRenderCmd(ctx context.Context, workspaceName, kubeconfigName string, skipLogin bool, identityFile string, waitTimeout time.Duration) error {
 	compiler, err := newCompilerWithOptionalDecryptor(&cfg, identityFile)
 	if err != nil {
 		return err
@@ -121,12 +123,12 @@ func runRenderCmd(workspaceName, kubeconfigName string, skipLogin bool, identity
 	}
 
 	if !skipLogin {
-		if err := runLogin(rk, waitTimeout); err != nil {
+		if err := runLogin(ctx, rk, waitTimeout); err != nil {
 			return err
 		}
 	}
 
-	if err := writeKubeconfig(rk.Path, *rk.Config); err != nil {
+	if err := writeKubeconfig(rk.Path, rk.Config); err != nil {
 		return err
 	}
 
@@ -139,7 +141,7 @@ func runRenderCmd(workspaceName, kubeconfigName string, skipLogin bool, identity
 	return nil
 }
 
-func runRenderCmdFzf(workspaceName string, skipLogin bool, identityFile string, waitTimeout time.Duration) error {
+func runRenderCmdFzf(ctx context.Context, workspaceName string, skipLogin bool, identityFile string, waitTimeout time.Duration) error {
 	compiler, err := newCompilerWithOptionalDecryptor(&cfg, identityFile)
 	if err != nil {
 		return err
@@ -165,12 +167,12 @@ func runRenderCmdFzf(workspaceName string, skipLogin bool, identityFile string, 
 	}
 
 	if !skipLogin {
-		if err := runLogin(rk, waitTimeout); err != nil {
+		if err := runLogin(ctx, rk, waitTimeout); err != nil {
 			return err
 		}
 	}
 
-	if err := writeKubeconfig(rk.Path, *rk.Config); err != nil {
+	if err := writeKubeconfig(rk.Path, rk.Config); err != nil {
 		return err
 	}
 	if err := setConfig(runtime.BaseDir, rk.Path); err != nil {
@@ -181,55 +183,59 @@ func runRenderCmdFzf(workspaceName string, skipLogin bool, identityFile string, 
 	return nil
 }
 
-func runLogin(rk *config.RuntimeKubeconfig, waitTimeout time.Duration) (err error) {
-	for name, ctx := range rk.Contexts {
+func runLogin(ctx context.Context, rk *config.RuntimeKubeconfig, waitTimeout time.Duration) error {
+	names := slices.Sorted(maps.Keys(rk.Contexts))
 
-		aui := rk.AuthInfo(ctx.AuthInfo.Name)
-
-		if aui.CredentialSource != nil {
-			cmdCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-
-			dash, err := cmdutil.NewDashboard([]string{name}, cmdutil.WithHeader("Running login flow for"))
-			if err != nil {
-				return err
-			}
-
-			go dash.Loop(cmdCtx)
-
-			// Fire off start operations concurrently
-			go func() {
-				dash.FailAfterMsg(0, waitTimeout, "timeout reached")
-
-				runner := command.NewExecCommandRunner()
-				loginService := service.LoginService{Runner: runner, Stdout: loginStdout, Stderr: loginStderr}
-
-				newAuth, loginErr := loginService.Login(cmdCtx, aui)
-
-				time.Sleep(1 * time.Second)
-
-				if loginErr != nil {
-					escapedMsg := strings.ReplaceAll(loginStderr.String(), "\n", "n")
-					dash.SetPhase(0, escapedMsg)
-					dash.FailMsg(0, "Login command returned an error")
-					err = fmt.Errorf("%v: %s", loginErr, escapedMsg)
-				}
-
-				rk.Config.AuthInfos[ctx.AuthInfo.Name] = newAuth
-
-				dash.DoneMsg(0, fmt.Sprintf("Successfully logged in user %s", ctx.AuthInfo.Name))
-			}()
-
-			dash.WaitAnd(cancel)
-
-			if err != nil {
-				return err
-			}
-
-		}
+	dash, err := cmdutil.NewDashboard(names, cmdutil.WithHeader("Running login flow for"))
+	if err != nil {
+		return err
 	}
 
-	return err
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	go dash.Loop(ctx)
+
+	for i, name := range names {
+
+		ctx := rk.Context(name)
+		aui := rk.AuthInfo(ctx.AuthInfo.Name)
+
+		if aui.CredentialSource == nil {
+			dash.Done(i)
+			continue
+		}
+
+		cmdCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		// Fire off start operations concurrently
+		go func(idx int, rtCtx *config.RuntimeContext, rtAi *config.RuntimeAuthInfo, svcName string) {
+			dash.FailAfterMsg(0, waitTimeout, "timeout reached")
+
+			runner := command.NewExecCommandRunner()
+			loginService := service.LoginService{Runner: runner, Stdout: loginStdout, Stderr: loginStderr}
+
+			newAuth, loginErr := loginService.Login(cmdCtx, rtAi)
+
+			time.Sleep(1 * time.Second)
+
+			if loginErr != nil {
+				escapedMsg := strings.ReplaceAll(loginStderr.String(), "\n", "n")
+				dash.SetPhase(i, escapedMsg)
+				dash.FailMsg(i, "Login command returned an error")
+				return
+			}
+
+			rk.Config.AuthInfos[rtCtx.AuthInfo.Name] = newAuth
+
+			dash.DoneMsg(i, fmt.Sprintf("Successfully logged in user %s", rtCtx.AuthInfo.Name))
+		}(i, ctx, aui, name)
+
+	}
+
+	dash.WaitAnd(cancel)
+	return nil
 }
 
 func pickContext(rc *config.RuntimeConfig, workspaceName string) (string, string, error) {

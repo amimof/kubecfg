@@ -13,12 +13,6 @@ import (
 	"github.com/amimof/kubecfg/pkg/config"
 )
 
-const (
-	VIEW_DEFAULT = iota
-	VIEW_CONFIG_EXISTS
-	VIEW_ERROR
-)
-
 var (
 	// VERSION of the app. Is set when project is built and should never be set manually
 	VERSION string
