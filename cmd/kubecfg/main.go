@@ -129,6 +129,7 @@ func main() {
 	rootCmd.AddCommand(newEncryptCmd())
 	rootCmd.AddCommand(newDescribeCmd())
 	rootCmd.AddCommand(newUseCmd())
+	rootCmd.AddCommand(newWhichCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
