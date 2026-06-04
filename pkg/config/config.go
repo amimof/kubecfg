@@ -27,9 +27,10 @@ type Kubeconfig struct {
 	DefaultContext   string `mapstructure:"default_context,omitempty" json:"default_context,omitempty" yaml:"default_context,omitempty"`
 	DefaultNamespace string `mapstructure:"default_namespace,omitempty" json:"default_namespace,omitempty" yaml:"default_namespace,omitempty"`
 
-	Clusters  map[string]*Cluster  `mapstructure:"clusters,omitempty" json:"clusters,omitempty" yaml:"clusters,omitempty"`
-	AuthInfos map[string]*AuthInfo `mapstructure:"auth_infos,omitempty" json:"auth_infos,omitempty" yaml:"auth_infos,omitempty"`
-	Contexts  map[string]*Context  `mapstructure:"contexts,omitempty" json:"contexts,omitempty" yaml:"contexts,omitempty"`
+	LoginSources map[string]*LoginSource `mapstructure:"login_sources,omitempty" json:"login_sources,omitempty" yaml:"login_sources,omitempty"`
+	Clusters     map[string]*Cluster     `mapstructure:"clusters,omitempty" json:"clusters,omitempty" yaml:"clusters,omitempty"`
+	AuthInfos    map[string]*AuthInfo    `mapstructure:"auth_infos,omitempty" json:"auth_infos,omitempty" yaml:"auth_infos,omitempty"`
+	Contexts     map[string]*Context     `mapstructure:"contexts,omitempty" json:"contexts,omitempty" yaml:"contexts,omitempty"`
 }
 
 type Cluster struct {
@@ -45,8 +46,6 @@ type Cluster struct {
 }
 
 type AuthInfo struct {
-	Login *LoginAuth `mapstructure:"login" json:"login" yaml:"login"`
-
 	LocationOfOrigin               string
 	ClientCertificate              string                    `json:"client-certificate,omitempty"`
 	ClientCertificateData          []byte                    `json:"client-certificate-data,omitempty"`
@@ -71,18 +70,12 @@ type AuthInfo struct {
 	Extensions                     map[string]runtime.Object `json:"extensions,omitempty"`
 }
 
-type Auth struct {
-	Login *LoginAuth `mapstructure:"login" json:"login" yaml:"login"`
-	Token *TokenAuth `mapstructure:"token" json:"token" yaml:"token"`
-}
-
-type LoginAuth struct {
-	Command             string   `json:"command"`
-	Args                []string `json:"args"`
-	OutputMode          string   `json:"output_mode"`
-	Env                 []string `json:"env"`
-	EnvFile             string   `mapstructure:"env_file" json:"env_file" yaml:"env_file"`
-	CopyFromContextName string   `mapstructure:"copy_from_context_name" json:"copy_from_context_name" yaml:"copy_from_context_name"`
+type LoginSource struct {
+	Command    string   `json:"command"`
+	Args       []string `json:"args"`
+	OutputMode string   `json:"output_mode"`
+	Env        []string `json:"env"`
+	EnvFile    string   `mapstructure:"env_file" json:"env_file" yaml:"env_file"`
 }
 
 type TokenAuth struct {
@@ -124,6 +117,16 @@ type Context struct {
 	AuthInfo         string                    `json:"user"`
 	Namespace        string                    `json:"namespace,omitempty"`
 	Extensions       map[string]runtime.Object `json:"extensions,omitempty"`
+	ImportRef        ImportRef                 `mapstructure:"import_ref" json:"import_ref" yaml:"import_ref"`
+}
+
+type ImportRef struct {
+	LoginSourceName string `mapstructure:"login_source" json:"login_source" yaml:"login_source"`
+	ContextName     string `mapstructure:"context" json:"context" yaml:"context"`
+
+	// Optional explicit names.
+	ClusterName  string `mapstructure:"cluster" json:"cluster" yaml:"cluster"`
+	AuthInfoName string `mapstructure:"auth_info" json:"auth_info" yaml:"auth_info"`
 }
 
 func (c *Config) Validate() error {

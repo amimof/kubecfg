@@ -1,11 +1,13 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"maps"
 	"os"
+	"strings"
 
 	"github.com/amimof/kubecfg/pkg/command"
 	"github.com/amimof/kubecfg/pkg/config"
@@ -20,31 +22,27 @@ type LoginService struct {
 	Stderr io.Writer
 }
 
-func (s *LoginService) Login(
-	ctx context.Context,
-	auth *config.RuntimeAuthInfo,
-) (*api.AuthInfo, error) {
-	if auth == nil {
-		return nil, fmt.Errorf("authinfo is nil")
+func (s *LoginService) Login(ctx context.Context, rkc *config.RuntimeKubeconfig) error {
+	if rkc == nil {
+		return fmt.Errorf("runtime kubeconfig is nil")
 	}
 
-	switch source := auth.CredentialSource.(type) {
-	case nil:
-		return auth.AuthInfo, nil
-	case *config.RuntimeLoginCredentialSource:
-		return s.loginWithCommand(ctx, auth, source)
-	default:
-		return nil, fmt.Errorf("unsupported credential source %T", source)
+	for _, source := range rkc.LoginSources {
+		imported, err := s.loginWithCommand(ctx, source)
+		if err != nil {
+			return fmt.Errorf("login source %q: %w", source.Name, err)
+		}
+		source.ImportedConfig = imported
 	}
+
+	return nil
 }
 
-func (s *LoginService) loginWithCommand(ctx context.Context, _ *config.RuntimeAuthInfo, sourceType config.RuntimeCredentialSource) (*api.AuthInfo, error) {
-	source := sourceType.(*config.RuntimeLoginCredentialSource)
-
+func (s *LoginService) loginWithCommand(ctx context.Context, source *config.RuntimeLoginSource) (*api.Config, error) {
 	// Create temporary file where kubeconfig is written to by the exec command
 	tmpFile, err := os.CreateTemp("/tmp", "kubecfg-login")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create temporary kubeconfig: %w", err)
 	}
 	defer func() {
 		if err := tmpFile.Close(); err != nil {
@@ -60,30 +58,44 @@ func (s *LoginService) loginWithCommand(ctx context.Context, _ *config.RuntimeAu
 	maps.Copy(env, source.Env)
 	env["KUBECONFIG"] = tmpFile.Name()
 
+	stdoutWriter, _ := teeWriter(s.Stdout)
+	stderrWriter, stderrBuf := teeWriter(s.Stderr)
+
 	_, err = s.Runner.Run(ctx, command.CommandSpec{
 		Command: source.Command,
 		Args:    source.Args,
 		Env:     env,
 		Dir:     "/tmp",
-		Stdout:  s.Stdout,
-		Stderr:  s.Stderr,
+		Stdout:  stdoutWriter,
+		Stderr:  stderrWriter,
 	})
 	if err != nil {
-		return nil, err
+		return nil, wrapLoginCommandError(source.Command, err, stderrBuf.String())
 	}
 
 	// Read temporary kubeconfig to extract token
 	kubeconfig, err := clientcmd.LoadFromFile(tmpFile.Name())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load generated kubeconfig: %w", err)
 	}
 
-	if _, ok := kubeconfig.Contexts[source.Import.Context]; !ok {
-		return nil, fmt.Errorf("could not import auth info from context %s", source.Import.Context)
+	return kubeconfig, nil
+}
+
+func teeWriter(w io.Writer) (io.Writer, *bytes.Buffer) {
+	buf := &bytes.Buffer{}
+	if w == nil {
+		return buf, buf
 	}
 
-	authInfoRef := kubeconfig.Contexts[source.Import.Context].AuthInfo
-	authInfo := kubeconfig.AuthInfos[authInfoRef]
+	return io.MultiWriter(w, buf), buf
+}
 
-	return authInfo, nil
+func wrapLoginCommandError(commandName string, err error, stderr string) error {
+	stderr = strings.TrimSpace(stderr)
+	if stderr == "" {
+		return fmt.Errorf("run command %q: %w", commandName, err)
+	}
+
+	return fmt.Errorf("run command %q: %w: %s", commandName, err, stderr)
 }
