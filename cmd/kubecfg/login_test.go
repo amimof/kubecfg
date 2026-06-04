@@ -76,6 +76,52 @@ func TestRunLoginCmdDoesNotMutateLoginSourceEnv(t *testing.T) {
 	require.NotContains(t, source.Env, "KUBECONFIG")
 }
 
+func TestRunLoginCmdReturnsHelpfulErrorWhenCommandCannotStart(t *testing.T) {
+	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
+
+	originalCfg := cfg
+	originalStdout := loginStdout
+	originalStderr := loginStderr
+	t.Cleanup(func() {
+		cfg = originalCfg
+		loginStdout = originalStdout
+		loginStderr = originalStderr
+	})
+
+	cfg = newImportedLoginCommandTestConfig(targetPath)
+	cfg.Kubeconfigs["vgr"].LoginSources["shared"].Command = filepath.Join(t.TempDir(), "missing-login-binary")
+	loginStdout = &bytes.Buffer{}
+	loginStderr = &bytes.Buffer{}
+
+	err := runLoginCmd("work", "vgr", "ctx1", "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "login source \"shared\": run command")
+	require.Contains(t, err.Error(), "missing-login-binary")
+}
+
+func TestRunLoginCmdReturnsHelpfulErrorWhenGeneratedKubeconfigIsInvalid(t *testing.T) {
+	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
+
+	originalCfg := cfg
+	originalStdout := loginStdout
+	originalStderr := loginStderr
+	t.Cleanup(func() {
+		cfg = originalCfg
+		loginStdout = originalStdout
+		loginStderr = originalStderr
+	})
+
+	cfg = newImportedLoginCommandTestConfig(targetPath)
+	cfg.Kubeconfigs["vgr"].LoginSources["shared"].Args = []string{"-test.run=TestHelperProcessInvalidLoginCommand", "--"}
+	loginStdout = &bytes.Buffer{}
+	loginStderr = &bytes.Buffer{}
+
+	err := runLoginCmd("work", "vgr", "ctx1", "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "login source \"shared\": load generated kubeconfig")
+	require.Contains(t, err.Error(), "cannot unmarshal string")
+}
+
 func TestHelperProcessLoginCommand(t *testing.T) {
 	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
 		return
@@ -120,6 +166,23 @@ func TestHelperProcessLoginCommand(t *testing.T) {
 
 	if err := os.WriteFile(kubeconfigPath, data, 0o600); err != nil {
 		os.Exit(6)
+	}
+
+	os.Exit(0)
+}
+
+func TestHelperProcessInvalidLoginCommand(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
+		return
+	}
+
+	kubeconfigPath := os.Getenv("KUBECONFIG")
+	if kubeconfigPath == "" {
+		os.Exit(2)
+	}
+
+	if err := os.WriteFile(kubeconfigPath, []byte("not-a-kubeconfig"), 0o600); err != nil {
+		os.Exit(3)
 	}
 
 	os.Exit(0)

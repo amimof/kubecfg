@@ -290,6 +290,52 @@ func TestRunRenderCmdFailsWhenImportedContextIsMissing(t *testing.T) {
 	require.EqualError(t, err, "kubeconfig \"vgr\" context \"ctx1\" imports missing context \"missing\" from login source \"shared\"")
 }
 
+func TestRunRenderCmdReturnsHelpfulErrorWhenLoginCommandCannotStart(t *testing.T) {
+	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
+
+	originalCfg := cfg
+	originalStdout := loginStdout
+	originalStderr := loginStderr
+	t.Cleanup(func() {
+		cfg = originalCfg
+		loginStdout = originalStdout
+		loginStderr = originalStderr
+	})
+
+	cfg = newImportedRenderCommandTestConfig(targetPath)
+	cfg.Kubeconfigs["vgr"].LoginSources["shared"].Command = filepath.Join(t.TempDir(), "missing-login-binary")
+	loginStdout = &bytes.Buffer{}
+	loginStderr = &bytes.Buffer{}
+
+	err := runRenderCmd(context.Background(), "work", "vgr", false, "", time.Second)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "login source \"shared\": run command")
+	require.Contains(t, err.Error(), "missing-login-binary")
+}
+
+func TestRunRenderCmdReturnsHelpfulErrorWhenGeneratedKubeconfigIsInvalid(t *testing.T) {
+	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
+
+	originalCfg := cfg
+	originalStdout := loginStdout
+	originalStderr := loginStderr
+	t.Cleanup(func() {
+		cfg = originalCfg
+		loginStdout = originalStdout
+		loginStderr = originalStderr
+	})
+
+	cfg = newImportedRenderCommandTestConfig(targetPath)
+	cfg.Kubeconfigs["vgr"].LoginSources["shared"].Args = []string{"-test.run=TestHelperProcessInvalidLoginCommand", "--"}
+	loginStdout = &bytes.Buffer{}
+	loginStderr = &bytes.Buffer{}
+
+	err := runRenderCmd(context.Background(), "work", "vgr", false, "", time.Second)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "login source \"shared\": load generated kubeconfig")
+	require.Contains(t, err.Error(), "cannot unmarshal string")
+}
+
 func TestWriteKubeconfigSetsSecurePermissions(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("permission bits are not reliable on Windows")

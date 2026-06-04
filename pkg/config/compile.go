@@ -183,6 +183,7 @@ func (c *Compiler) compileLoginSources(rkc *RuntimeKubeconfig, kc *Kubeconfig) e
 		}
 
 		rkc.LoginSources[name] = &RuntimeLoginSource{
+			Name:    name,
 			Command: ls.Command,
 			Args:    ls.Args,
 			Env:     mergeLoginEnv(ls.Env, envMap),

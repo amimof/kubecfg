@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/amimof/kubecfg/pkg/command"
@@ -75,6 +76,10 @@ func runLoginCmd(workspaceName, kubeconfigName, contextName, identityFile string
 	loginService := service.LoginService{Runner: runner, Stdout: loginStdout, Stderr: loginStderr}
 	err = loginService.Login(ctx, rk)
 	if err != nil {
+		detail := compactLoginErrorDetail(loginStderr.String())
+		if detail != "" && !strings.Contains(err.Error(), detail) {
+			return fmt.Errorf("%w: %s", err, detail)
+		}
 		return err
 	}
 

@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path"
-	"slices"
 	"strings"
 	"time"
 
@@ -192,55 +190,56 @@ func runRenderCmdFzf(ctx context.Context, workspaceName string, skipLogin bool, 
 }
 
 func runLogin(ctx context.Context, rk *config.RuntimeKubeconfig, waitTimeout time.Duration) error {
-	names := slices.Sorted(maps.Keys(rk.Contexts))
+	ctx, appCancel := context.WithCancel(ctx)
+	defer appCancel()
 
-	dash, err := cmdutil.NewDashboard(names, cmdutil.WithHeader("Running login flow for"))
+	dash, err := cmdutil.NewDashboard([]string{rk.Name}, cmdutil.WithHeader("Running login flow for"))
 	if err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	go dash.Loop(ctx)
 
-	if len(rk.LoginSources) == 0 {
-		for i := range names {
-			dash.Done(i)
-		}
-		dash.WaitAnd(cancel)
-		return nil
-	}
+	cmdCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-	cmdCtx, loginCancel := context.WithTimeout(context.Background(), waitTimeout)
-	defer loginCancel()
+	// Fire off start operations concurrently
+	dash.FailAfterMsg(0, waitTimeout, "timeout reached")
 
 	runner := command.NewExecCommandRunner()
 	loginService := service.LoginService{Runner: runner, Stdout: loginStdout, Stderr: loginStderr}
-	loginErr := loginService.Login(cmdCtx, rk)
-	escapedMsg := strings.ReplaceAll(loginStderr.String(), "\n", "n")
 
-	for i, name := range names {
-		rtCtx := rk.Context(name)
-		if loginErr != nil {
-			dash.SetPhase(i, escapedMsg)
-			dash.FailMsg(i, "Login command returned an error")
-			continue
+	err = loginService.Login(cmdCtx, rk)
+	if err != nil {
+		detail := compactLoginErrorDetail(loginStderr.String())
+		if detail != "" {
+			dash.SetPhase(0, detail)
 		}
-
-		dash.DoneMsg(i, contextLoginDoneMessage(rtCtx))
+		dash.FailMsg(0, err.Error())
+		dash.WaitAnd(appCancel)
+		return err
 	}
 
-	dash.WaitAnd(cancel)
-	return loginErr
+	dash.DoneMsg(0, fmt.Sprintf("Successfully refreshed %d login sources", len(rk.LoginSources)))
+	dash.WaitAnd(appCancel)
+
+	return nil
 }
 
-func contextLoginDoneMessage(ctx *config.RuntimeContext) string {
-	if ctx.Import == nil && ctx.AuthInfo != nil {
-		return fmt.Sprintf("Successfully logged in user %s", ctx.AuthInfo.Name)
+func compactLoginErrorDetail(stderr string) string {
+	stderr = strings.TrimSpace(stderr)
+	if stderr == "" {
+		return ""
 	}
 
-	return fmt.Sprintf("Successfully refreshed context %s", ctx.Name)
+	lines := strings.FieldsFunc(stderr, func(r rune) bool {
+		return r == '\n' || r == '\r'
+	})
+	if len(lines) == 0 {
+		return ""
+	}
+
+	return strings.TrimSpace(lines[len(lines)-1])
 }
 
 func pickContext(rc *config.RuntimeConfig, workspaceName string) (string, string, error) {

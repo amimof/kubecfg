@@ -46,6 +46,7 @@ type RuntimeKubeconfig struct {
 }
 
 type RuntimeLoginSource struct {
+	Name    string
 	Command string
 	Args    []string
 	Env     map[string]string
