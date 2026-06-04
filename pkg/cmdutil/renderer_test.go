@@ -1,8 +1,10 @@
 package cmdutil
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fatih/color"
 )
@@ -92,4 +94,23 @@ func TestNewDashboardUsesDefaultWidthWhenWriterIsNotATerminal(t *testing.T) {
 	if got := dash.services[0].container.Dimensions[0]; got != defaultDashboardWidth {
 		t.Fatalf("expected fallback width %d, got %d", defaultDashboardWidth, got)
 	}
+}
+
+func TestDashboardWaitAndStopsLoopCleanly(t *testing.T) {
+	dash, err := NewDashboard([]string{"service"}, WithWriter(&strings.Builder{}))
+	if err != nil {
+		t.Fatalf("NewDashboard returned error: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go dash.Loop(ctx)
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		dash.Done(0)
+	}()
+
+	dash.WaitAnd(cancel)
 }

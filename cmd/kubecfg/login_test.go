@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -206,7 +207,7 @@ func TestRunRenderCmdWritesResolvedRuntimePath(t *testing.T) {
 
 	cfg = newRenderPathResolutionTestConfig(targetDir)
 
-	err := runRenderCmd("work", "vgr", true, "", time.Second)
+	err := runRenderCmd(context.Background(), "work", "vgr", true, "", time.Second)
 	require.NoError(t, err)
 
 	_, err = os.Stat(targetPath)

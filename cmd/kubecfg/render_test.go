@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -121,7 +122,7 @@ func TestRunRenderCmdFzfNoSelectionIsNoOp(t *testing.T) {
 		return fzf.ExitNoMatch, nil
 	}
 
-	err := runRenderCmdFzf("", false, "", time.Second)
+	err := runRenderCmdFzf(context.Background(), "", false, "", time.Second)
 	require.NoError(t, err)
 
 	_, err = os.Stat(targetPath)
@@ -150,7 +151,7 @@ func TestRunRenderCmdFzfUpdatesActiveConfigSymlink(t *testing.T) {
 		return fzf.ExitOk, nil
 	}
 
-	err := runRenderCmdFzf("", false, "", time.Second)
+	err := runRenderCmdFzf(context.Background(), "", false, "", time.Second)
 	require.NoError(t, err)
 
 	linkPath := filepath.Join(tmpDir, "config")
@@ -172,7 +173,7 @@ func TestRunRenderCmdDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
 
 	cfg = newEncryptedRenderCommandTestConfig(targetPath, encryptedToken)
 
-	err := runRenderCmd("work", "vgr", true, identityFile, time.Second)
+	err := runRenderCmd(context.Background(), "work", "vgr", true, identityFile, time.Second)
 	require.NoError(t, err)
 
 	contents, err := os.ReadFile(targetPath)
@@ -204,7 +205,7 @@ func TestRunRenderCmdFzfDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
 		return fzf.ExitOk, nil
 	}
 
-	err := runRenderCmdFzf("", true, identityFile, time.Second)
+	err := runRenderCmdFzf(context.Background(), "", true, identityFile, time.Second)
 	require.NoError(t, err)
 
 	contents, err := os.ReadFile(targetPath)
@@ -222,7 +223,7 @@ func TestWriteKubeconfigSetsSecurePermissions(t *testing.T) {
 	t.Run("new file", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "config.yaml")
 
-		err := writeKubeconfig(path, kubeconfig)
+		err := writeKubeconfig(path, &kubeconfig)
 		require.NoError(t, err)
 		require.Equal(t, os.FileMode(0o600), filePerms(t, path))
 	})
@@ -233,7 +234,7 @@ func TestWriteKubeconfigSetsSecurePermissions(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, os.Chmod(path, 0o644))
 
-		err = writeKubeconfig(path, kubeconfig)
+		err = writeKubeconfig(path, &kubeconfig)
 		require.NoError(t, err)
 		require.Equal(t, os.FileMode(0o600), filePerms(t, path))
 	})

@@ -83,7 +83,7 @@ func runLoginCmd(workspaceName, kubeconfigName, contextName, identityFile string
 	rk.Config.AuthInfos[rkContextRef.AuthInfo.Name] = newAuth
 	rk.Config.CurrentContext = contextName
 
-	if err := writeKubeconfig(rk.Path, *rk.Config); err != nil {
+	if err := writeKubeconfig(rk.Path, rk.Config); err != nil {
 		return err
 	}
 
