@@ -211,21 +211,24 @@ func (d *Dashboard) FailAfterMsg(idx int, after time.Duration, msg string) {
 
 // Wait blocks until Loop finishes.
 func (d *Dashboard) Wait() {
-	go func() {
-		for {
-			time.Sleep(200 * time.Millisecond)
-			if d.IsDone() && len(d.services) > 0 {
-				d.done <- struct{}{}
-			}
+	for {
+		time.Sleep(200 * time.Millisecond)
+
+		d.mu.Lock()
+		hasServices := len(d.services) > 0
+		d.mu.Unlock()
+
+		if !hasServices || d.IsDone() {
+			return
 		}
-	}()
-	<-d.done
+	}
 }
 
 // WaitAnd blocks until Loop finishes and executes the provided function when done
 func (d *Dashboard) WaitAnd(fn func()) {
-	defer fn()
 	d.Wait()
+	fn()
+	<-d.done
 }
 
 func (d *Dashboard) Finished(fn func()) {
