@@ -2,7 +2,7 @@
 
 [![Go](https://github.com/amimof/kubecfg/actions/workflows/go.yaml/badge.svg)](https://github.com/amimof/kubecfg/actions/workflows/go.yaml)
 
-`kubecfg` is a small CLI for managing kubeconfigs as named workspaces. It keeps cluster definitions, output paths, and credential refresh hooks in a single YAML file, then renders the kubeconfig files you actually use.
+`kubecfg` is a small CLI for managing kubeconfigs as named workspaces. It keeps cluster definitions, output paths, and login/import flows in a single YAML file, then renders the kubeconfig files you actually use.
 
 <!--toc:start-->
 - [What It Does](#what-it-does)
@@ -11,7 +11,7 @@
 - [How It Works](#how-it-works)
 - [Usage](#usage)
   - [Rendering kubeconfigs](#rendering-kubeconfigs)
-  - [Login pre-hooks](#login-pre-hooks)
+  - [Login Sources And Imports](#login-sources-and-imports)
   - [Encrypted Fields](#encrypted-fields)
   - [Describing Workspaces](#describing-workspaces)
   - [Selecting kubeconfigs](#selecting-kubeconfigs)
@@ -22,9 +22,9 @@
 
 
 # What It Does
-If you manage more than one cluster, `~/.kube` tends to turn into a junk drawer pretty quickly. `kubecfg` gives that sprawl some structure without adding much ceremony. It groups kubeconfigs into workspaces, lets you select them interactively or directly, and can refresh credentials by calling an external login command and importing the resulting auth info.
+If you manage more than one cluster, `~/.kube` tends to turn into a junk drawer pretty quickly. `kubecfg` gives that sprawl some structure without adding much ceremony. It groups kubeconfigs into workspaces, lets you select them interactively or directly, and can refresh credentials by calling external login commands and importing the resulting context data.
 
-`kubecfg` is useful when you want one source of truth for cluster access instead of hand-editing kubeconfigs or keeping a pile of half-documented files around. It fits well when different environments need different output files, different default contexts, or different login flows, but you still want the result to be plain kubeconfig files on disk.
+`kubecfg` is useful when you want one source of truth for cluster access instead of hand-editing kubeconfigs or keeping a pile of half-documented files around. It fits well when different environments need different output files, different default contexts, or different login/import flows, but you still want the result to be plain kubeconfig files on disk.
 
 
 # Highlights
@@ -32,16 +32,17 @@ If you manage more than one cluster, `~/.kube` tends to turn into a junk drawer 
 - Named workspaces for grouping related kubeconfigs
 - Interactive fuzzy selection backed by `fzf`
 - Workspace-level default context resolution
-- External login flow for refreshing credentials on demand
+- Kubeconfig-level login sources for refreshing credentials on demand
+- Context-level imports from login-generated kubeconfigs
 - Relative kubeconfig paths via `@/` and `--base-dir`
 - Plain files, plain CLI, no daemon or background state
 - Built-in per-field encryption using `age`
 
 # How It Works
 
-`kubecfg` treats `~/.config/kubecfg.yaml` as the source of truth and rendered kubeconfig files as disposable build artifacts. Instead of editing kubeconfig files directly, you describe your intended kubeconfig setup in `kubecfg.yaml`: workspaces, clusters, auth info, contexts, hooks, defaults, and optional encrypted fields. When you render a kubeconfig, `kubecfg` turns that declarative intent into a regular kubeconfig file that tools like `kubectl`, `helm`, and `kubectx` can use.
+`kubecfg` treats `~/.config/kubecfg.yaml` as the source of truth and rendered kubeconfig files as disposable build artifacts. Instead of editing kubeconfig files directly, you describe your intended kubeconfig setup in `kubecfg.yaml`: workspaces, clusters, auth info, contexts, login sources, imports, defaults, and optional encrypted fields. When you render a kubeconfig, `kubecfg` turns that declarative intent into a regular kubeconfig file that tools like `kubectl`, `helm`, and `kubectx` can use.
 
-When you run `kubecfg render`, kubecfg reads the configuration file, resolves the selected workspace, assembles the referenced clusters, users, and contexts, applies any workspace defaults, and writes the rendered kubeconfig to the configured output directory.
+When you run `kubecfg render`, kubecfg reads the configuration file, resolves the selected workspace, assembles the referenced clusters, users, and contexts, runs any configured login sources, imports referenced clusters and auth infos from the temporary kubeconfigs they produce, applies any workspace defaults, and writes the rendered kubeconfig to the configured output directory.
 
 Because rendered kubeconfigs are generated outputs, they are intentionally disposable. If a rendered kubeconfig is deleted, overwritten, or becomes stale, you can render it again from the source configuration. 
 
@@ -67,25 +68,24 @@ This lets you manage `kubecfg.yaml` like a dotfile. Version it, sync it across m
        kubeconfigs:
        - mainframe
 
-   kubeconfigs:
-     mainframe:
-       path: "@mainframe.yaml"
+    kubeconfigs:
+      mainframe:
+        path: "@/mainframe.yaml"
 
-       clusters:
-         mainframe-dev:
-           server: https://mainframe-dev.amimof.com
+        login_sources:
+          oidc:
+            command: kubectl
+            args:
+              - oidc-login
+              - get-token
 
-       auth_infos:
-         admin:
-           exec:
-             command: oidc-login
-             args: ["get-token", "--issuer-url", "https://issuer.example.com"]
-
-       contexts:
-         mainframe:
-           cluster: mainframe-dev
-           authinfo: admin
-   ```
+        contexts:
+          mainframe:
+            namespace: default
+            import_ref:
+              login_source: oidc
+              context: imported
+    ```
 
 3. Render a kubeconfig
 
@@ -111,30 +111,32 @@ This lets you manage `kubecfg.yaml` like a dotfile. Version it, sync it across m
 
 `kubecfg render mainframe --identity-file ~/.config/kubecfg/age.txt` decrypts `encryptedToken` and other encrypted auth fields during compile.
 
-## Login pre-hooks
+## Login Sources And Imports
 
-A kubeconfig definition can include a `login` pre-hook. When present, the hook is executed before the kubeconfig is rendered. This is useful for workflows where you need to authenticate before generating or activating a kubeconfig, for example with OIDC, cloud provider CLIs, or custom login commands.
+A kubeconfig definition can include one or more `login_sources`. A login source runs a command that writes a temporary kubeconfig to the path provided in `$KUBECONFIG`. Contexts can then use `import_ref` to select which context, cluster, and auth info to copy from that temporary kubeconfig into the rendered kubeconfig.
 
 Example:
 ```yaml
 kubeconfigs:
   company:
     path: "@/company.yaml"
-    auth_infos:
-      amimof:
-        login:
-          command: kubectl
-          args:
-            - oidc-login
-            - get-token
-          copy_from_context_name: imported
+    login_sources:
+      oidc:
+        command: kubectl
+        args:
+          - oidc-login
+          - get-token
     contexts:
       production:
-        cluster: company
-        authInfo: amimof
+        namespace: default
+        import_ref:
+          login_source: oidc
+          context: imported
 ```
 
-When you run `kubecfg render company`, the login hook runs first. The command writes credentials to the kubeconfig path provided in `$KUBECONFIG`, and `kubecfg` imports the auth info referenced by `login.copy_from_context_name` before rendering and activating the final kubeconfig.
+When you run `kubecfg render company`, kubecfg runs the `oidc` login source first. The command writes a temporary kubeconfig to the path provided in `$KUBECONFIG`. Kubecfg then reads that temporary kubeconfig, resolves `contexts.production.import_ref.context`, and copies the effective cluster and auth info into the rendered kubeconfig.
+
+If `import_ref.cluster` or `import_ref.auth_info` is omitted, kubecfg defaults those names from the imported context inside the temporary kubeconfig.
 
 ## Encrypted Fields
 
@@ -157,7 +159,7 @@ kubeconfigs:
     contexts:
       admin:
         cluster: mainframe
-        authInfo: admin
+        user: admin
 ```
 
 Render that kubeconfig with either an age identity file or a passphrase-backed age secret:
@@ -214,9 +216,9 @@ version: v1
 # Used when --workspace is omitted.
 default_workspace: examples
 
-# Top-level fallback namespace. Stored in runtime config, but not currently
-# written into generated kubeconfigs by kubecfg.
-# default_namespace: default
+# Base directory used for paths starting with "@/".
+# If omitted, kubecfg defaults to ~/.kube.
+# base_dir: ~/.kube
 
 workspaces:
   examples:
@@ -226,7 +228,7 @@ workspaces:
     # Each entry must match a key under `kubeconfigs`.
     kubeconfigs:
       - static-token
-      - login-refresh
+      - login-import
       - exec-plugin
       - token-file
       - mtls
@@ -235,12 +237,19 @@ workspaces:
 
 kubeconfigs:
   static-token:
-    # Absolute path, or "@/..." relative to --base-dir.
+    # Absolute path, or "@/..." relative to base_dir.
     path: "@/generated/static-token.yaml"
 
     # Local context name to render as current-context for this kubeconfig.
     # This is resolved only within static-token.contexts.
     current_context: admin
+
+    # Local context name that should become both the default and current
+    # context in the rendered kubeconfig.
+    # default_context: admin
+
+    # Default namespace applied to contexts that omit namespace.
+    # default_namespace: default
 
     # Present in the schema, but not currently enforced by CLI commands.
     # protected: true
@@ -252,11 +261,6 @@ kubeconfigs:
 
     clusters:
       mainframe:
-        # The cluster map key is the name used in the rendered kubeconfig.
-        # `name` exists in the schema, but the compiler currently uses the
-        # map key above.
-        # name: mainframe
-
         # Optional internal metadata passed through to client-go.
         # location_of_origin: kubecfg
 
@@ -318,19 +322,23 @@ kubeconfigs:
         #   config:
         #     client-id: kubectl
         #     idp-issuer-url: https://issuer.example.com
+
+        # Use `exec` when the rendered kubeconfig itself should carry a
+        # client-go exec plugin configuration.
         # exec:
         #   command: kubelogin
         #   args:
         #     - get-token
-        # login:
-        #   command: /usr/local/bin/cluster-login
-        #   args:
-        #     - --cluster
-        #     - mainframe
         #   env:
-        #     - AWS_PROFILE=dev
-        #   outputMode: json
-        #   copy_from_context_name: imported
+        #     - name: AZURE_CONFIG_DIR
+        #       value: /Users/you/.azure
+        #   env_file: ~/.config/kubecfg/exec.env
+        #   apiVersion: client.authentication.k8s.io/v1beta1
+        #   installHint: Install kubelogin and make sure it is on PATH.
+        #   provideClusterInfo: true
+        #   interactiveMode: IfAvailable
+        #   stdinUnavailable: false
+        #   stdinUnavailableMessage: stdin required for interactive login
 
         # Optional fields that can be layered on top of the chosen auth
         # mechanism.
@@ -353,9 +361,8 @@ kubeconfigs:
         # Must reference an existing cluster key from this kubeconfig.
         cluster: mainframe
 
-        # Current decoder expects authInfo here.
         # Must reference an existing auth info key from this kubeconfig.
-        authInfo: admin
+        user: admin
 
         # Optional namespace stored on the rendered context.
         namespace: default
@@ -367,44 +374,54 @@ kubeconfigs:
         # with the current decoder.
         # extensions: {}
 
-  login-refresh:
-    path: "@/generated/login-refresh.yaml"
-    clusters:
-      login-cluster:
-        server: https://login.example.com
-    auth_infos:
+  login-import:
+    path: "@/generated/login-import.yaml"
+
+    # Login sources are reusable within a single kubeconfig definition.
+    login_sources:
       oidc:
-        # Use `login` when kubecfg should run a command, read the temporary
-        # kubeconfig it produced, and import credentials from a context inside it.
-        login:
-          command: /usr/local/bin/cluster-login
-          args:
-            - --cluster
-            - login-cluster
+        command: /usr/local/bin/cluster-login
+        args:
+          - --cluster
+          - login-cluster
 
-          # Present in the schema, but not currently used by kubecfg.
-          # outputMode: json
+        # Extra environment passed to the login subprocess.
+        env:
+          - AWS_PROFILE=dev
+          - AWS_REGION=eu-west-1
 
-          # Extra environment passed to the login subprocess.
-          env:
-            - AWS_PROFILE=dev
-            - AWS_REGION=eu-west-1
+        # Environment can also be loaded from a dotenv-style file.
+        # Values from env_file override duplicate keys from env.
+        # env_file: ~/.config/kubecfg/login.env
 
-          # This must match the context name inside the temporary kubeconfig
-          # produced by the login command.
-          copy_from_context_name: imported
+        # Present in the schema, but not currently used by kubecfg.
+        # output_mode: json
 
-        # Other primary auth mechanisms:
-        # token: "<redacted>"
-        # exec:
-        #   command: kubelogin
-        #   args:
-        #     - get-token
     contexts:
       imported:
-        cluster: login-cluster
-        authInfo: oidc
+        # For imported contexts, local cluster/user are optional.
         namespace: default
+
+        import_ref:
+          # Must match a key under login_sources.
+          login_source: oidc
+
+          # Must match a context name inside the temporary kubeconfig produced
+          # by the login command.
+          context: imported
+
+          # Optional explicit overrides. If omitted, kubecfg uses the cluster
+          # and auth info referenced by the imported context.
+          # cluster: imported-cluster
+          # auth_info: imported-user
+
+      utbildning-dev:
+        # Minimal import-only context matching a common Tanzu workflow.
+        namespace: default
+        import_ref:
+          login_source: oidc
+          context: utbildning-dev
+          auth_info: utbildning-dev
 
   exec-plugin:
     path: "@/generated/exec-plugin.yaml"
@@ -436,19 +453,10 @@ kubeconfigs:
           # Present in the schema, but not practical to configure from plain YAML
           # with the current decoder.
           # config: {}
-
-        # Other primary auth mechanisms:
-        # token: "<redacted>"
-        # login:
-        #   command: /usr/local/bin/cluster-login
-        #   args:
-        #     - --cluster
-        #     - exec-cluster
-        #   copy_from_context_name: imported
     contexts:
       exec:
         cluster: exec-cluster
-        authInfo: exec-user
+        user: exec-user
 
   token-file:
     # Absolute paths are also supported.
@@ -459,19 +467,10 @@ kubeconfigs:
     auth_infos:
       tokenfile-user:
         tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
-
-        # Other primary auth mechanisms:
-        # token: "<redacted>"
-        # login:
-        #   command: /usr/local/bin/cluster-login
-        #   args:
-        #     - --cluster
-        #     - tokenfile-cluster
-        #   copy_from_context_name: imported
     contexts:
       tokenfile:
         cluster: tokenfile-cluster
-        authInfo: tokenfile-user
+        user: tokenfile-user
 
   mtls:
     path: "@/generated/mtls.yaml"
@@ -498,17 +497,10 @@ kubeconfigs:
         #   -----BEGIN PRIVATE KEY-----
         #   ...
         #   -----END PRIVATE KEY-----
-
-        # Other primary auth mechanisms:
-        # token: "<redacted>"
-        # exec:
-        #   command: kubelogin
-        #   args:
-        #     - get-token
     contexts:
       mtls:
         cluster: mtls-cluster
-        authInfo: mtls-user
+        user: mtls-user
 
   basic-auth:
     path: "@/generated/basic-auth.yaml"
@@ -530,19 +522,10 @@ kubeconfigs:
         # impersonateUserExtra:
         #   example.com/team:
         #     - platform
-
-        # Other primary auth mechanisms:
-        # token: "<redacted>"
-        # login:
-        #   command: /usr/local/bin/cluster-login
-        #   args:
-        #     - --cluster
-        #     - basic-cluster
-        #   copy_from_context_name: imported
     contexts:
       basic:
         cluster: basic-cluster
-        authInfo: basic-user
+        user: basic-user
 
   legacy-auth-provider:
     path: "@/generated/legacy-auth-provider.yaml"
@@ -560,17 +543,10 @@ kubeconfigs:
             id-token: "<redacted>"
             refresh-token: "<redacted>"
             idp-issuer-url: https://issuer.example.com
-
-        # Other primary auth mechanisms:
-        # token: "<redacted>"
-        # exec:
-        #   command: kubelogin
-        #   args:
-        #     - get-token
     contexts:
       legacy:
         cluster: legacy-cluster
-        authInfo: legacy-user
+        user: legacy-user
 ```
 
 > **Note**: This project is under active early development and unstable. Features, API, and behavior are subject to change at any time and may not be backwards compatible between versions. Expect breaking changes.

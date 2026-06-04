@@ -71,12 +71,11 @@ type AuthInfo struct {
 }
 
 type LoginSource struct {
-	Command             string   `json:"command"`
-	Args                []string `json:"args"`
-	OutputMode          string   `json:"output_mode"`
-	Env                 []string `json:"env"`
-	EnvFile             string   `mapstructure:"env_file" json:"env_file" yaml:"env_file"`
-	CopyFromContextName string   `mapstructure:"copy_from_context_name" json:"copy_from_context_name" yaml:"copy_from_context_name"`
+	Command    string   `json:"command"`
+	Args       []string `json:"args"`
+	OutputMode string   `json:"output_mode"`
+	Env        []string `json:"env"`
+	EnvFile    string   `mapstructure:"env_file" json:"env_file" yaml:"env_file"`
 }
 
 type TokenAuth struct {
