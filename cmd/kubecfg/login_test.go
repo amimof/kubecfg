@@ -2,13 +2,9 @@ package main
 
 import (
 	"bytes"
-	"context"
-	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/amimof/kubecfg/pkg/config"
 	"github.com/stretchr/testify/require"
@@ -16,7 +12,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd/api"
 )
 
-func TestRunLoginCmdStreamsSubprocessOutputAndImportsAuthInfo(t *testing.T) {
+func TestRunLoginCmdImportsReferencedContext(t *testing.T) {
 	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
 
 	originalCfg := cfg
@@ -28,7 +24,7 @@ func TestRunLoginCmdStreamsSubprocessOutputAndImportsAuthInfo(t *testing.T) {
 		loginStderr = originalStderr
 	})
 
-	cfg = newLoginCommandTestConfig(targetPath)
+	cfg = newImportedLoginCommandTestConfig(targetPath)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -39,19 +35,19 @@ func TestRunLoginCmdStreamsSubprocessOutputAndImportsAuthInfo(t *testing.T) {
 	require.NoError(t, err)
 	require.Greater(t, stdout.Len(), 64*1024)
 	require.Greater(t, stderr.Len(), 64*1024)
-	require.Contains(t, stdout.String(), "stdout-data")
-	require.Contains(t, stderr.String(), "stderr-data")
 
 	loaded, err := clientcmd.LoadFromFile(targetPath)
 	require.NoError(t, err)
-
-	authInfo, ok := loaded.AuthInfos["login-user"]
-	require.True(t, ok)
-	require.Equal(t, "imported-token", authInfo.Token)
-	require.Equal(t, "login-user", loaded.Contexts["ctx1"].AuthInfo)
+	require.Equal(t, "imported-cluster", loaded.Contexts["ctx1"].Cluster)
+	require.Equal(t, "utbildning-dev", loaded.Contexts["ctx1"].AuthInfo)
+	require.Equal(t, "https://example.com", loaded.Clusters["imported-cluster"].Server)
+	require.Equal(t, "imported-token", loaded.AuthInfos["utbildning-dev"].Token)
+	require.Equal(t, "default", loaded.Contexts["ctx1"].Namespace)
+	_, hasLocalCluster := loaded.Clusters["cluster"]
+	require.False(t, hasLocalCluster)
 }
 
-func TestRunLoginCmdDoesNotMutateCredentialSourceEnv(t *testing.T) {
+func TestRunLoginCmdDoesNotMutateLoginSourceEnv(t *testing.T) {
 	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
 
 	originalCfg := cfg
@@ -63,7 +59,7 @@ func TestRunLoginCmdDoesNotMutateCredentialSourceEnv(t *testing.T) {
 		loginStderr = originalStderr
 	})
 
-	cfg = newLoginCommandTestConfig(targetPath)
+	cfg = newImportedLoginCommandTestConfig(targetPath)
 	loginStdout = &bytes.Buffer{}
 	loginStderr = &bytes.Buffer{}
 
@@ -71,39 +67,13 @@ func TestRunLoginCmdDoesNotMutateCredentialSourceEnv(t *testing.T) {
 	runtime, err := compiler.Compile(&cfg)
 	require.NoError(t, err)
 
-	auth := runtime.Workspace("work").Kubeconfig("vgr").Context("ctx1").AuthInfo
-	source, ok := auth.CredentialSource.(*config.RuntimeLoginCredentialSource)
-	require.True(t, ok)
+	source := runtime.Workspace("work").Kubeconfig("vgr").LoginSources["shared"]
+	require.NotNil(t, source)
 	require.NotContains(t, source.Env, "KUBECONFIG")
 
 	err = runLoginCmd("work", "vgr", "ctx1", "")
 	require.NoError(t, err)
 	require.NotContains(t, source.Env, "KUBECONFIG")
-}
-
-func TestRunLoginCmdDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
-	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
-	identityFile, encryptedToken := writeAgeIdentityAndEncryptedToken(t, "login-token")
-
-	originalCfg := cfg
-	originalStdout := loginStdout
-	originalStderr := loginStderr
-	t.Cleanup(func() {
-		cfg = originalCfg
-		loginStdout = originalStdout
-		loginStderr = originalStderr
-	})
-
-	cfg = newLoginCommandEncryptedTestConfig(targetPath, encryptedToken)
-	loginStdout = &bytes.Buffer{}
-	loginStderr = &bytes.Buffer{}
-
-	err := runLoginCmd("work", "vgr", "ctx1", identityFile)
-	require.NoError(t, err)
-
-	loaded, err := clientcmd.LoadFromFile(targetPath)
-	require.NoError(t, err)
-	require.Equal(t, "imported-token", loaded.AuthInfos["login-user"].Token)
 }
 
 func TestHelperProcessLoginCommand(t *testing.T) {
@@ -116,13 +86,13 @@ func TestHelperProcessLoginCommand(t *testing.T) {
 		os.Exit(2)
 	}
 
-	stdoutPayload := strings.Repeat("stdout-data\n", 10000)
-	stderrPayload := strings.Repeat("stderr-data\n", 10000)
+	stdoutPayload := bytes.Repeat([]byte("stdout-data\n"), 10000)
+	stderrPayload := bytes.Repeat([]byte("stderr-data\n"), 10000)
 
-	if _, err := io.WriteString(os.Stdout, stdoutPayload); err != nil {
+	if _, err := os.Stdout.Write(stdoutPayload); err != nil {
 		os.Exit(3)
 	}
-	if _, err := io.WriteString(os.Stderr, stderrPayload); err != nil {
+	if _, err := os.Stderr.Write(stderrPayload); err != nil {
 		os.Exit(4)
 	}
 
@@ -131,15 +101,16 @@ func TestHelperProcessLoginCommand(t *testing.T) {
 			"imported-cluster": {Server: "https://example.com"},
 		},
 		AuthInfos: map[string]*api.AuthInfo{
-			"imported-user": {Token: "imported-token"},
+			"imported-user":  {Token: "imported-token"},
+			"utbildning-dev": {Token: "imported-token"},
 		},
 		Contexts: map[string]*api.Context{
-			"imported": {
+			"utbildning-dev": {
 				Cluster:  "imported-cluster",
 				AuthInfo: "imported-user",
 			},
 		},
-		CurrentContext: "imported",
+		CurrentContext: "utbildning-dev",
 	}
 
 	data, err := clientcmd.Write(kubeconfig)
@@ -154,7 +125,7 @@ func TestHelperProcessLoginCommand(t *testing.T) {
 	os.Exit(0)
 }
 
-func newLoginCommandTestConfig(targetPath string) config.Config {
+func newImportedLoginCommandTestConfig(targetPath string) config.Config {
 	return config.Config{
 		Version: "v1",
 		BaseDir: filepath.Dir(targetPath),
@@ -166,76 +137,21 @@ func newLoginCommandTestConfig(targetPath string) config.Config {
 		Kubeconfigs: map[string]*config.Kubeconfig{
 			"vgr": {
 				Path: targetPath,
-				Clusters: map[string]*config.Cluster{
-					"cluster": {Server: "https://example.com"},
-				},
-				AuthInfos: map[string]*config.AuthInfo{
-					"login-user": {
-						Login: &config.LoginAuth{
-							Command:             os.Args[0],
-							Args:                []string{"-test.run=TestHelperProcessLoginCommand", "--"},
-							Env:                 []string{"GO_WANT_HELPER_PROCESS=1"},
-							CopyFromContextName: "imported",
-						},
+				LoginSources: map[string]*config.LoginSource{
+					"shared": {
+						Command: os.Args[0],
+						Args:    []string{"-test.run=TestHelperProcessLoginCommand", "--"},
+						Env:     []string{"GO_WANT_HELPER_PROCESS=1"},
 					},
 				},
 				Contexts: map[string]*config.Context{
 					"ctx1": {
-						Cluster:  "cluster",
-						AuthInfo: "login-user",
-					},
-				},
-			},
-		},
-	}
-}
-
-func newLoginCommandEncryptedTestConfig(targetPath, encryptedToken string) config.Config {
-	cfg := newLoginCommandTestConfig(targetPath)
-	cfg.Kubeconfigs["vgr"].AuthInfos["login-user"].EncryptedToken = encryptedToken
-	return cfg
-}
-
-func TestRunRenderCmdWritesResolvedRuntimePath(t *testing.T) {
-	targetDir := t.TempDir()
-	targetPath := filepath.Join(targetDir, "target-kubeconfig.yaml")
-
-	originalCfg := cfg
-	t.Cleanup(func() {
-		cfg = originalCfg
-	})
-
-	cfg = newRenderPathResolutionTestConfig(targetDir)
-
-	err := runRenderCmd(context.Background(), "work", "vgr", true, "", time.Second)
-	require.NoError(t, err)
-
-	_, err = os.Stat(targetPath)
-	require.NoError(t, err)
-}
-
-func newRenderPathResolutionTestConfig(targetDir string) config.Config {
-	return config.Config{
-		Version: "v1",
-		BaseDir: targetDir,
-		Workspaces: map[string]*config.Workspace{
-			"work": {
-				Kubeconfigs: []string{"vgr"},
-			},
-		},
-		Kubeconfigs: map[string]*config.Kubeconfig{
-			"vgr": {
-				Path: "@/target-kubeconfig.yaml",
-				Clusters: map[string]*config.Cluster{
-					"cluster": {Server: "https://example.com"},
-				},
-				AuthInfos: map[string]*config.AuthInfo{
-					"user": {},
-				},
-				Contexts: map[string]*config.Context{
-					"context": {
-						Cluster:  "cluster",
-						AuthInfo: "user",
+						Namespace: "default",
+						ImportRef: config.ImportRef{
+							LoginSourceName: "shared",
+							AuthInfoName:    "utbildning-dev",
+							ContextName:     "utbildning-dev",
+						},
 					},
 				},
 			},

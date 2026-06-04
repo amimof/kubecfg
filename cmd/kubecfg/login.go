@@ -67,21 +67,20 @@ func runLoginCmd(workspaceName, kubeconfigName, contextName, identityFile string
 
 	// Find the credential source using workspace and kubeconfig name
 	rk := runtime.Workspace(workspaceName).Kubeconfig(kubeconfigName)
-	aui := rk.Contexts[contextName].AuthInfo
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	runner := command.NewExecCommandRunner()
 	loginService := service.LoginService{Runner: runner, Stdout: loginStdout, Stderr: loginStderr}
-	newAuth, err := loginService.Login(ctx, aui)
+	err = loginService.Login(ctx, rk)
 	if err != nil {
 		return err
 	}
 
-	rkContextRef := rk.Context(contextName)
-	rk.Config.AuthInfos[rkContextRef.AuthInfo.Name] = newAuth
-	rk.Config.CurrentContext = contextName
+	if err := applyImportedContexts(rk); err != nil {
+		return err
+	}
 
 	if err := writeKubeconfig(rk.Path, rk.Config); err != nil {
 		return err

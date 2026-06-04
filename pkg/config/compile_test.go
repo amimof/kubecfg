@@ -271,7 +271,7 @@ func TestCompileExpandsKubeconfigPathWithTilde(t *testing.T) {
 	require.Equal(t, filepath.Join(homeDir, "target-kubeconfig.yaml"), runtime.Kubeconfigs["demo"].Path)
 }
 
-func TestCompileMergesLoginEnvFileWithoutMutatingProcessEnv(t *testing.T) {
+func TestCompileMergesLoginSourceEnvFileWithoutMutatingProcessEnv(t *testing.T) {
 	tempDir := t.TempDir()
 	envFile := filepath.Join(tempDir, "login.env")
 	err := os.WriteFile(envFile, []byte("FROM_FILE=file-value\nQUOTED=\"quoted value\"\n"), 0o600)
@@ -284,13 +284,44 @@ func TestCompileMergesLoginEnvFileWithoutMutatingProcessEnv(t *testing.T) {
 		Kubeconfigs: map[string]*Kubeconfig{
 			"demo": {
 				Path: "/tmp/demo",
-				AuthInfos: map[string]*AuthInfo{
-					"user": {
-						Login: &LoginAuth{
-							Command:             "login",
-							Env:                 []string{"FROM_FILE=inline-value", "KEEP=keep-value"},
-							EnvFile:             envFile,
-							CopyFromContextName: "ctx",
+				LoginSources: map[string]*LoginSource{
+					"shared": {
+						Command: "login",
+						Env:     []string{"FROM_FILE=inline-value", "KEEP=keep-value"},
+						EnvFile: envFile,
+					},
+				},
+			},
+		},
+	}
+
+	runtime, err := NewCompiler().Compile(&cfg)
+	require.NoError(t, err)
+
+	source := runtime.Kubeconfigs["demo"].LoginSources["shared"]
+	require.NotNil(t, source)
+	require.Equal(t, "file-value", source.Env["FROM_FILE"])
+	require.Equal(t, "keep-value", source.Env["KEEP"])
+	require.Equal(t, "quoted value", source.Env["QUOTED"])
+	_, existsAfter := os.LookupEnv("FROM_FILE")
+	require.False(t, existsAfter)
+}
+
+func TestCompileContextImportRef(t *testing.T) {
+	cfg := Config{
+		Kubeconfigs: map[string]*Kubeconfig{
+			"demo": {
+				Path: "/tmp/demo",
+				LoginSources: map[string]*LoginSource{
+					"shared": {Command: "login"},
+				},
+				Contexts: map[string]*Context{
+					"admin": {
+						ImportRef: ImportRef{
+							LoginSourceName: "shared",
+							ContextName:     "imported",
+							ClusterName:     "imported-cluster",
+							AuthInfoName:    "imported-user",
 						},
 					},
 				},
@@ -301,13 +332,51 @@ func TestCompileMergesLoginEnvFileWithoutMutatingProcessEnv(t *testing.T) {
 	runtime, err := NewCompiler().Compile(&cfg)
 	require.NoError(t, err)
 
-	source, ok := runtime.Kubeconfigs["demo"].AuthInfos["user"].CredentialSource.(*RuntimeLoginCredentialSource)
-	require.True(t, ok)
-	require.Equal(t, "file-value", source.Env["FROM_FILE"])
-	require.Equal(t, "keep-value", source.Env["KEEP"])
-	require.Equal(t, "quoted value", source.Env["QUOTED"])
-	_, existsAfter := os.LookupEnv("FROM_FILE")
-	require.False(t, existsAfter)
+	ctx := runtime.Kubeconfigs["demo"].Contexts["admin"]
+	require.NotNil(t, ctx.Import)
+	require.Equal(t, "shared", ctx.Import.LoginSourceName)
+	require.Equal(t, "imported", ctx.Import.ContextName)
+	require.Equal(t, "imported-cluster", ctx.Import.ClusterName)
+	require.Equal(t, "imported-user", ctx.Import.AuthInfoName)
+	require.Equal(t, "imported-cluster", ctx.ClusterKey)
+	require.Equal(t, "imported-user", ctx.AuthInfoKey)
+	require.Equal(t, "imported-cluster", ctx.Context.Cluster)
+	require.Equal(t, "imported-user", ctx.Context.AuthInfo)
+}
+
+func TestCompileContextImportRefAllowsImplicitImportedNames(t *testing.T) {
+	cfg := Config{
+		Kubeconfigs: map[string]*Kubeconfig{
+			"demo": {
+				Path: "/tmp/demo",
+				LoginSources: map[string]*LoginSource{
+					"shared": {Command: "login"},
+				},
+				Contexts: map[string]*Context{
+					"admin": {
+						ImportRef: ImportRef{
+							LoginSourceName: "shared",
+							ContextName:     "imported",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	runtime, err := NewCompiler().Compile(&cfg)
+	require.NoError(t, err)
+
+	ctx := runtime.Kubeconfigs["demo"].Contexts["admin"]
+	require.NotNil(t, ctx.Import)
+	require.Equal(t, "shared", ctx.Import.LoginSourceName)
+	require.Equal(t, "imported", ctx.Import.ContextName)
+	require.Empty(t, ctx.Import.ClusterName)
+	require.Empty(t, ctx.Import.AuthInfoName)
+	require.Empty(t, ctx.ClusterKey)
+	require.Empty(t, ctx.AuthInfoKey)
+	require.Empty(t, ctx.Context.Cluster)
+	require.Empty(t, ctx.Context.AuthInfo)
 }
 
 func TestCompileMergesExecEnvFileWithEnvFileWinning(t *testing.T) {
@@ -352,7 +421,7 @@ func TestCompileMergesExecEnvFileWithEnvFileWinning(t *testing.T) {
 	})
 }
 
-func TestCompileFailsWhenLoginEnvFileIsInvalid(t *testing.T) {
+func TestCompileFailsWhenLoginSourceEnvFileIsInvalid(t *testing.T) {
 	tempDir := t.TempDir()
 	envFile := filepath.Join(tempDir, "login.env")
 	err := os.WriteFile(envFile, []byte("BROKEN_LINE\n"), 0o600)
@@ -362,17 +431,161 @@ func TestCompileFailsWhenLoginEnvFileIsInvalid(t *testing.T) {
 		Kubeconfigs: map[string]*Kubeconfig{
 			"demo": {
 				Path: "/tmp/demo",
-				AuthInfos: map[string]*AuthInfo{
-					"user": {
-						Login: &LoginAuth{EnvFile: envFile},
-					},
+				LoginSources: map[string]*LoginSource{
+					"shared": {EnvFile: envFile},
 				},
 			},
 		},
 	}
 
 	_, err = NewCompiler().Compile(&cfg)
-	require.EqualError(t, err, "authinfo \"user\" login env_file: invalid env line 1: missing '='")
+	require.EqualError(t, err, "kubeconfigs.demo.login_sources.shared.env_file: invalid env line 1: missing '='")
+}
+
+func TestCompileFailsWhenLoginSourceIsNil(t *testing.T) {
+	cfg := Config{
+		Kubeconfigs: map[string]*Kubeconfig{
+			"demo": {
+				Path: "/tmp/demo",
+				LoginSources: map[string]*LoginSource{
+					"shared": nil,
+				},
+			},
+		},
+	}
+
+	_, err := NewCompiler().Compile(&cfg)
+	require.EqualError(t, err, "kubeconfigs.demo.login_sources.shared is nil")
+}
+
+func TestCompileFailsWhenContextImportRefLoginSourceIsMissing(t *testing.T) {
+	cfg := Config{
+		Kubeconfigs: map[string]*Kubeconfig{
+			"demo": {
+				Path: "/tmp/demo",
+				Clusters: map[string]*Cluster{
+					"cluster": {Server: "https://example.com"},
+				},
+				AuthInfos: map[string]*AuthInfo{
+					"user": {},
+				},
+				Contexts: map[string]*Context{
+					"admin": {
+						Cluster:  "cluster",
+						AuthInfo: "user",
+						ImportRef: ImportRef{
+							ContextName: "imported",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	_, err := NewCompiler().Compile(&cfg)
+	require.EqualError(t, err, "kubeconfigs.demo.contexts.admin.import_ref.login_source is required")
+}
+
+func TestCompileFailsWhenContextImportRefContextIsMissing(t *testing.T) {
+	cfg := Config{
+		Kubeconfigs: map[string]*Kubeconfig{
+			"demo": {
+				Path: "/tmp/demo",
+				LoginSources: map[string]*LoginSource{
+					"shared": {Command: "login"},
+				},
+				Clusters: map[string]*Cluster{
+					"cluster": {Server: "https://example.com"},
+				},
+				AuthInfos: map[string]*AuthInfo{
+					"user": {},
+				},
+				Contexts: map[string]*Context{
+					"admin": {
+						Cluster:  "cluster",
+						AuthInfo: "user",
+						ImportRef: ImportRef{
+							LoginSourceName: "shared",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	_, err := NewCompiler().Compile(&cfg)
+	require.EqualError(t, err, "kubeconfigs.demo.contexts.admin.import_ref.context is required")
+}
+
+func TestCompileFailsWhenContextImportRefLoginSourceDoesNotExist(t *testing.T) {
+	cfg := Config{
+		Kubeconfigs: map[string]*Kubeconfig{
+			"demo": {
+				Path: "/tmp/demo",
+				Clusters: map[string]*Cluster{
+					"cluster": {Server: "https://example.com"},
+				},
+				AuthInfos: map[string]*AuthInfo{
+					"user": {},
+				},
+				Contexts: map[string]*Context{
+					"admin": {
+						Cluster:  "cluster",
+						AuthInfo: "user",
+						ImportRef: ImportRef{
+							LoginSourceName: "missing",
+							ContextName:     "imported",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	_, err := NewCompiler().Compile(&cfg)
+	require.EqualError(t, err, "kubeconfigs.demo.contexts.admin.import_ref.login_source references missing login source \"missing\"")
+}
+
+func TestCompileFailsWhenContextClusterIsMissingWithoutImportRef(t *testing.T) {
+	cfg := Config{
+		Kubeconfigs: map[string]*Kubeconfig{
+			"demo": {
+				Path: "/tmp/demo",
+				AuthInfos: map[string]*AuthInfo{
+					"user": {},
+				},
+				Contexts: map[string]*Context{
+					"admin": {
+						AuthInfo: "user",
+					},
+				},
+			},
+		},
+	}
+
+	_, err := NewCompiler().Compile(&cfg)
+	require.EqualError(t, err, "kubeconfigs.demo.contexts.admin.cluster is required")
+}
+
+func TestCompileFailsWhenContextAuthInfoIsMissingWithoutImportRef(t *testing.T) {
+	cfg := Config{
+		Kubeconfigs: map[string]*Kubeconfig{
+			"demo": {
+				Path: "/tmp/demo",
+				Clusters: map[string]*Cluster{
+					"cluster": {Server: "https://example.com"},
+				},
+				Contexts: map[string]*Context{
+					"admin": {
+						Cluster: "cluster",
+					},
+				},
+			},
+		},
+	}
+
+	_, err := NewCompiler().Compile(&cfg)
+	require.EqualError(t, err, "kubeconfigs.demo.contexts.admin.authinfo is required")
 }
 
 func TestCompileFailsWhenExecEnvFileIsInvalid(t *testing.T) {

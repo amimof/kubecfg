@@ -128,6 +128,10 @@ func runRenderCmd(ctx context.Context, workspaceName, kubeconfigName string, ski
 		}
 	}
 
+	if err := applyImportedContexts(rk); err != nil {
+		return err
+	}
+
 	if err := writeKubeconfig(rk.Path, rk.Config); err != nil {
 		return err
 	}
@@ -172,6 +176,10 @@ func runRenderCmdFzf(ctx context.Context, workspaceName string, skipLogin bool, 
 		}
 	}
 
+	if err := applyImportedContexts(rk); err != nil {
+		return err
+	}
+
 	if err := writeKubeconfig(rk.Path, rk.Config); err != nil {
 		return err
 	}
@@ -196,46 +204,43 @@ func runLogin(ctx context.Context, rk *config.RuntimeKubeconfig, waitTimeout tim
 
 	go dash.Loop(ctx)
 
-	for i, name := range names {
-
-		ctx := rk.Context(name)
-		aui := rk.AuthInfo(ctx.AuthInfo.Name)
-
-		if aui.CredentialSource == nil {
+	if len(rk.LoginSources) == 0 {
+		for i := range names {
 			dash.Done(i)
+		}
+		dash.WaitAnd(cancel)
+		return nil
+	}
+
+	cmdCtx, loginCancel := context.WithTimeout(context.Background(), waitTimeout)
+	defer loginCancel()
+
+	runner := command.NewExecCommandRunner()
+	loginService := service.LoginService{Runner: runner, Stdout: loginStdout, Stderr: loginStderr}
+	loginErr := loginService.Login(cmdCtx, rk)
+	escapedMsg := strings.ReplaceAll(loginStderr.String(), "\n", "n")
+
+	for i, name := range names {
+		rtCtx := rk.Context(name)
+		if loginErr != nil {
+			dash.SetPhase(i, escapedMsg)
+			dash.FailMsg(i, "Login command returned an error")
 			continue
 		}
 
-		cmdCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		// Fire off start operations concurrently
-		go func(idx int, rtCtx *config.RuntimeContext, rtAi *config.RuntimeAuthInfo, svcName string) {
-			dash.FailAfterMsg(0, waitTimeout, "timeout reached")
-
-			runner := command.NewExecCommandRunner()
-			loginService := service.LoginService{Runner: runner, Stdout: loginStdout, Stderr: loginStderr}
-
-			newAuth, loginErr := loginService.Login(cmdCtx, rtAi)
-
-			time.Sleep(1 * time.Second)
-
-			if loginErr != nil {
-				escapedMsg := strings.ReplaceAll(loginStderr.String(), "\n", "n")
-				dash.SetPhase(i, escapedMsg)
-				dash.FailMsg(i, "Login command returned an error")
-				return
-			}
-
-			rk.Config.AuthInfos[rtCtx.AuthInfo.Name] = newAuth
-
-			dash.DoneMsg(i, fmt.Sprintf("Successfully logged in user %s", rtCtx.AuthInfo.Name))
-		}(i, ctx, aui, name)
-
+		dash.DoneMsg(i, contextLoginDoneMessage(rtCtx))
 	}
 
 	dash.WaitAnd(cancel)
-	return nil
+	return loginErr
+}
+
+func contextLoginDoneMessage(ctx *config.RuntimeContext) string {
+	if ctx.Import == nil && ctx.AuthInfo != nil {
+		return fmt.Sprintf("Successfully logged in user %s", ctx.AuthInfo.Name)
+	}
+
+	return fmt.Sprintf("Successfully refreshed context %s", ctx.Name)
 }
 
 func pickContext(rc *config.RuntimeConfig, workspaceName string) (string, string, error) {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -14,6 +15,7 @@ import (
 	decryptpkg "github.com/amimof/kubecfg/pkg/decrypt"
 	fzf "github.com/junegunn/fzf/src"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
 )
 
@@ -213,6 +215,81 @@ func TestRunRenderCmdFzfDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
 	require.Contains(t, string(contents), "token: fzf-token")
 }
 
+func TestRunRenderCmdImportsReferencedContext(t *testing.T) {
+	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
+
+	originalCfg := cfg
+	originalStdout := loginStdout
+	originalStderr := loginStderr
+	t.Cleanup(func() {
+		cfg = originalCfg
+		loginStdout = originalStdout
+		loginStderr = originalStderr
+	})
+
+	cfg = newImportedRenderCommandTestConfig(targetPath)
+	loginStdout = &bytes.Buffer{}
+	loginStderr = &bytes.Buffer{}
+
+	err := runRenderCmd(context.Background(), "work", "vgr", false, "", time.Second)
+	require.NoError(t, err)
+
+	loaded, err := clientcmd.LoadFromFile(targetPath)
+	require.NoError(t, err)
+	require.Equal(t, "imported-cluster", loaded.Contexts["ctx1"].Cluster)
+	require.Equal(t, "imported-user", loaded.Contexts["ctx1"].AuthInfo)
+	require.Equal(t, "https://example.com", loaded.Clusters["imported-cluster"].Server)
+	require.Equal(t, "imported-token", loaded.AuthInfos["imported-user"].Token)
+	require.Equal(t, "default", loaded.Contexts["ctx1"].Namespace)
+}
+
+func TestRunRenderCmdImportsImplicitClusterAndAuthInfo(t *testing.T) {
+	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
+
+	originalCfg := cfg
+	originalStdout := loginStdout
+	originalStderr := loginStderr
+	t.Cleanup(func() {
+		cfg = originalCfg
+		loginStdout = originalStdout
+		loginStderr = originalStderr
+	})
+
+	cfg = newImportedRenderCommandTestConfig(targetPath)
+	cfg.Kubeconfigs["vgr"].Contexts["ctx1"].ImportRef.AuthInfoName = ""
+	loginStdout = &bytes.Buffer{}
+	loginStderr = &bytes.Buffer{}
+
+	err := runRenderCmd(context.Background(), "work", "vgr", false, "", time.Second)
+	require.NoError(t, err)
+
+	loaded, err := clientcmd.LoadFromFile(targetPath)
+	require.NoError(t, err)
+	require.Equal(t, "imported-cluster", loaded.Contexts["ctx1"].Cluster)
+	require.Equal(t, "imported-user", loaded.Contexts["ctx1"].AuthInfo)
+}
+
+func TestRunRenderCmdFailsWhenImportedContextIsMissing(t *testing.T) {
+	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
+
+	originalCfg := cfg
+	originalStdout := loginStdout
+	originalStderr := loginStderr
+	t.Cleanup(func() {
+		cfg = originalCfg
+		loginStdout = originalStdout
+		loginStderr = originalStderr
+	})
+
+	cfg = newImportedRenderCommandTestConfig(targetPath)
+	cfg.Kubeconfigs["vgr"].Contexts["ctx1"].ImportRef.ContextName = "missing"
+	loginStdout = &bytes.Buffer{}
+	loginStderr = &bytes.Buffer{}
+
+	err := runRenderCmd(context.Background(), "work", "vgr", false, "", time.Second)
+	require.EqualError(t, err, "kubeconfig \"vgr\" context \"ctx1\" imports missing context \"missing\" from login source \"shared\"")
+}
+
 func TestWriteKubeconfigSetsSecurePermissions(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("permission bits are not reliable on Windows")
@@ -288,6 +365,41 @@ func newRenderCommandTestConfig(targetPath string) config.Config {
 					"context": {
 						Cluster:  "cluster",
 						AuthInfo: "user",
+					},
+				},
+			},
+		},
+	}
+}
+
+func newImportedRenderCommandTestConfig(targetPath string) config.Config {
+	return config.Config{
+		Version: "v1",
+		BaseDir: filepath.Dir(targetPath),
+		Workspaces: map[string]*config.Workspace{
+			"work": {
+				Kubeconfigs: []string{"vgr"},
+			},
+		},
+		Kubeconfigs: map[string]*config.Kubeconfig{
+			"vgr": {
+				Path: targetPath,
+				LoginSources: map[string]*config.LoginSource{
+					"shared": {
+						Command: os.Args[0],
+						Args:    []string{"-test.run=TestHelperProcessLoginCommand", "--"},
+						Env:     []string{"GO_WANT_HELPER_PROCESS=1"},
+					},
+				},
+				Contexts: map[string]*config.Context{
+					"ctx1": {
+						Namespace: "default",
+						ImportRef: config.ImportRef{
+							LoginSourceName: "shared",
+							ContextName:     "utbildning-dev",
+							ClusterName:     "imported-cluster",
+							AuthInfoName:    "imported-user",
+						},
 					},
 				},
 			},

@@ -3,6 +3,7 @@ package config
 import (
 	"bufio"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -82,9 +83,10 @@ func (c *Compiler) compileKubeconfigs(rt *RuntimeConfig, cfg *Config) error {
 			Aliases:          append([]string(nil), kubeconfig.Aliases...),
 			DefaultNamespace: strings.TrimSpace(kubeconfig.DefaultNamespace),
 
-			Clusters:  make(map[string]*RuntimeCluster),
-			AuthInfos: make(map[string]*RuntimeAuthInfo),
-			Contexts:  make(map[string]*RuntimeContext),
+			LoginSources: make(map[string]*RuntimeLoginSource),
+			Clusters:     make(map[string]*RuntimeCluster),
+			AuthInfos:    make(map[string]*RuntimeAuthInfo),
+			Contexts:     make(map[string]*RuntimeContext),
 
 			Config: api.NewConfig(),
 		}
@@ -171,9 +173,13 @@ func resolveExecEnvVars(src []ExecEnvVar) []api.ExecEnvVar {
 
 func (c *Compiler) compileLoginSources(rkc *RuntimeKubeconfig, kc *Kubeconfig) error {
 	for name, ls := range kc.LoginSources {
+		if ls == nil {
+			return fmt.Errorf("kubeconfigs.%s.login_sources.%s is nil", rkc.Name, name)
+		}
+
 		envMap, err := loadEnvFile(ls.EnvFile)
 		if err != nil {
-			return err
+			return fmt.Errorf("kubeconfigs.%s.login_sources.%s.env_file: %w", rkc.Name, name, err)
 		}
 
 		rkc.LoginSources[name] = &RuntimeLoginSource{
@@ -213,9 +219,7 @@ func envSliceToMap(env []string) map[string]string {
 
 func mergeLoginEnv(env []string, fileEnv map[string]string) map[string]string {
 	merged := envSliceToMap(env)
-	for key, value := range fileEnv {
-		merged[key] = value
-	}
+	maps.Copy(merged, fileEnv)
 	return merged
 }
 
@@ -328,8 +332,18 @@ func compileContexts(rkc *RuntimeKubeconfig, kc *Kubeconfig) error {
 			return fmt.Errorf("kubeconfigs.%s.contexts.%s is nil", rkc.Name, name)
 		}
 
-		runtimeAuthInfo := rkc.AuthInfo(context.AuthInfo)
-		runtimeCluster := rkc.Cluster(context.Cluster)
+		importRef, err := compileImportRef(rkc, name, context.ImportRef)
+		if err != nil {
+			return err
+		}
+
+		clusterKey, authInfoKey, err := compileContextKeys(rkc, name, context, importRef)
+		if err != nil {
+			return err
+		}
+
+		runtimeAuthInfo := rkc.AuthInfo(authInfoKey)
+		runtimeCluster := rkc.Cluster(clusterKey)
 
 		namespace := firstNonEmpty(context.Namespace, kc.DefaultNamespace)
 
@@ -339,14 +353,15 @@ func compileContexts(rkc *RuntimeKubeconfig, kc *Kubeconfig) error {
 			AuthInfo: runtimeAuthInfo,
 			Cluster:  runtimeCluster,
 
-			ClusterKey:  context.Cluster,
-			AuthInfoKey: context.AuthInfo,
+			ClusterKey:  clusterKey,
+			AuthInfoKey: authInfoKey,
 			Namespace:   namespace,
+			Import:      importRef,
 
 			Context: &api.Context{
 				LocationOfOrigin: context.LocationOfOrigin,
-				Cluster:          context.Cluster,
-				AuthInfo:         context.AuthInfo,
+				Cluster:          clusterKey,
+				AuthInfo:         authInfoKey,
 				Namespace:        namespace,
 				Extensions:       context.Extensions,
 			},
@@ -356,34 +371,91 @@ func compileContexts(rkc *RuntimeKubeconfig, kc *Kubeconfig) error {
 	return nil
 }
 
+func compileContextKeys(rkc *RuntimeKubeconfig, contextName string, context *Context, importRef *RuntimeImportRef) (string, string, error) {
+	clusterKey := strings.TrimSpace(context.Cluster)
+	authInfoKey := strings.TrimSpace(context.AuthInfo)
+
+	if importRef != nil {
+		return importRef.ClusterName, importRef.AuthInfoName, nil
+	}
+
+	if clusterKey == "" {
+		return "", "", fmt.Errorf("kubeconfigs.%s.contexts.%s.cluster is required", rkc.Name, contextName)
+	}
+
+	if authInfoKey == "" {
+		return "", "", fmt.Errorf("kubeconfigs.%s.contexts.%s.authinfo is required", rkc.Name, contextName)
+	}
+
+	return clusterKey, authInfoKey, nil
+}
+
+func compileImportRef(rkc *RuntimeKubeconfig, contextName string, ref ImportRef) (*RuntimeImportRef, error) {
+	loginSourceName := strings.TrimSpace(ref.LoginSourceName)
+	importContextName := strings.TrimSpace(ref.ContextName)
+	clusterName := strings.TrimSpace(ref.ClusterName)
+	authInfoName := strings.TrimSpace(ref.AuthInfoName)
+
+	if loginSourceName == "" && importContextName == "" && clusterName == "" && authInfoName == "" {
+		return nil, nil
+	}
+
+	if loginSourceName == "" {
+		return nil, fmt.Errorf("kubeconfigs.%s.contexts.%s.import_ref.login_source is required", rkc.Name, contextName)
+	}
+
+	if importContextName == "" {
+		return nil, fmt.Errorf("kubeconfigs.%s.contexts.%s.import_ref.context is required", rkc.Name, contextName)
+	}
+
+	if _, ok := rkc.LoginSources[loginSourceName]; !ok {
+		return nil, fmt.Errorf(
+			"kubeconfigs.%s.contexts.%s.import_ref.login_source references missing login source %q",
+			rkc.Name,
+			contextName,
+			loginSourceName,
+		)
+	}
+
+	return &RuntimeImportRef{
+		LoginSourceName: loginSourceName,
+		ContextName:     importContextName,
+		ClusterName:     clusterName,
+		AuthInfoName:    authInfoName,
+	}, nil
+}
+
 func resolveRuntimeContexts(rkc *RuntimeKubeconfig) error {
 	for contextKey, ctx := range rkc.Contexts {
-		cluster, ok := rkc.Clusters[ctx.ClusterKey]
-		if !ok {
-			return fmt.Errorf(
-				"kubeconfigs.%s.contexts.%s.cluster references missing cluster %q",
-				rkc.Name,
-				contextKey,
-				ctx.ClusterKey,
-			)
+		if ctx.Import == nil {
+			cluster, ok := rkc.Clusters[ctx.ClusterKey]
+			if !ok {
+				return fmt.Errorf(
+					"kubeconfigs.%s.contexts.%s.cluster references missing cluster %q",
+					rkc.Name,
+					contextKey,
+					ctx.ClusterKey,
+				)
+			}
+
+			authInfo, ok := rkc.AuthInfos[ctx.AuthInfoKey]
+			if !ok {
+				return fmt.Errorf(
+					"kubeconfigs.%s.contexts.%s.authinfo references missing authinfo %q",
+					rkc.Name,
+					contextKey,
+					ctx.AuthInfoKey,
+				)
+			}
+
+			ctx.Cluster = cluster
+			ctx.AuthInfo = authInfo
+
+			// Runtime context should point to rendered kubeconfig names.
+			ctx.Context.Cluster = cluster.Name
+			ctx.Context.AuthInfo = authInfo.Name
 		}
 
-		authInfo, ok := rkc.AuthInfos[ctx.AuthInfoKey]
-		if !ok {
-			return fmt.Errorf(
-				"kubeconfigs.%s.contexts.%s.authinfo references missing authinfo %q",
-				rkc.Name,
-				contextKey,
-				ctx.AuthInfoKey,
-			)
-		}
-
-		ctx.Cluster = cluster
-		ctx.AuthInfo = authInfo
-
-		// Runtime context should point to rendered kubeconfig names.
-		ctx.Context.Cluster = cluster.Name
-		ctx.Context.AuthInfo = authInfo.Name
 		ctx.Context.Namespace = ctx.Namespace
 
 	}
