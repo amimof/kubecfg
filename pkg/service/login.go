@@ -20,27 +20,23 @@ type LoginService struct {
 	Stderr io.Writer
 }
 
-func (s *LoginService) Login(
-	ctx context.Context,
-	auth *config.RuntimeAuthInfo,
-) (*api.AuthInfo, error) {
-	if auth == nil {
-		return nil, fmt.Errorf("authinfo is nil")
+func (s *LoginService) Login(ctx context.Context, rkc *config.RuntimeKubeconfig) error {
+	if rkc == nil {
+		return fmt.Errorf("runtime kubeconfig is nil")
 	}
 
-	switch source := auth.CredentialSource.(type) {
-	case nil:
-		return auth.AuthInfo, nil
-	case *config.RuntimeLoginCredentialSource:
-		return s.loginWithCommand(ctx, auth, source)
-	default:
-		return nil, fmt.Errorf("unsupported credential source %T", source)
+	for _, source := range rkc.LoginSources {
+		imported, err := s.loginWithCommand(ctx, source)
+		if err != nil {
+			return err
+		}
+		source.ImportedConfig = imported
 	}
+
+	return nil
 }
 
-func (s *LoginService) loginWithCommand(ctx context.Context, _ *config.RuntimeAuthInfo, sourceType config.RuntimeCredentialSource) (*api.AuthInfo, error) {
-	source := sourceType.(*config.RuntimeLoginCredentialSource)
-
+func (s *LoginService) loginWithCommand(ctx context.Context, source *config.RuntimeLoginSource) (*api.Config, error) {
 	// Create temporary file where kubeconfig is written to by the exec command
 	tmpFile, err := os.CreateTemp("/tmp", "kubecfg-login")
 	if err != nil {
@@ -78,12 +74,5 @@ func (s *LoginService) loginWithCommand(ctx context.Context, _ *config.RuntimeAu
 		return nil, err
 	}
 
-	if _, ok := kubeconfig.Contexts[source.Import.Context]; !ok {
-		return nil, fmt.Errorf("could not import auth info from context %s", source.Import.Context)
-	}
-
-	authInfoRef := kubeconfig.Contexts[source.Import.Context].AuthInfo
-	authInfo := kubeconfig.AuthInfos[authInfoRef]
-
-	return authInfo, nil
+	return kubeconfig, nil
 }

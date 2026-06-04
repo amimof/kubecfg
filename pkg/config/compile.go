@@ -97,6 +97,10 @@ func (c *Compiler) compileKubeconfigs(rt *RuntimeConfig, cfg *Config) error {
 			return err
 		}
 
+		if err := c.compileLoginSources(rkc, kubeconfig); err != nil {
+			return err
+		}
+
 		if err := c.compileAuthInfos(rkc, kubeconfig); err != nil {
 			return err
 		}
@@ -165,6 +169,22 @@ func resolveExecEnvVars(src []ExecEnvVar) []api.ExecEnvVar {
 	return execEnvVar
 }
 
+func (c *Compiler) compileLoginSources(rkc *RuntimeKubeconfig, kc *Kubeconfig) error {
+	for name, ls := range kc.LoginSources {
+		envMap, err := loadEnvFile(ls.EnvFile)
+		if err != nil {
+			return err
+		}
+
+		rkc.LoginSources[name] = &RuntimeLoginSource{
+			Command: ls.Command,
+			Args:    ls.Args,
+			Env:     mergeLoginEnv(ls.Env, envMap),
+		}
+	}
+	return nil
+}
+
 func (c *Compiler) compileAuthInfos(rkc *RuntimeKubeconfig, kc *Kubeconfig) error {
 	for name, ai := range kc.AuthInfos {
 		compiler := &AuthInfoCompiler{Decryptor: c.Decryptor}
@@ -224,26 +244,6 @@ func mergeExecEnv(env []ExecEnvVar, fileEnv map[string]string) []ExecEnvVar {
 	}
 
 	return merged
-}
-
-func resolveCredentialSource(l *LoginAuth) (RuntimeCredentialSource, error) {
-	if l == nil {
-		return nil, nil
-	}
-
-	envMap, err := loadEnvFile(l.EnvFile)
-	if err != nil {
-		return nil, err
-	}
-
-	return &RuntimeLoginCredentialSource{
-		Command: l.Command,
-		Args:    l.Args,
-		Env:     mergeLoginEnv(l.Env, envMap),
-		Import: RuntimeLoginImport{
-			Context: l.CopyFromContextName,
-		},
-	}, nil
 }
 
 func loadEnvFile(path string) (map[string]string, error) {
@@ -616,11 +616,6 @@ func (c *AuthInfoCompiler) Compile(name string, in *AuthInfo) (*RuntimeAuthInfo,
 		return nil, fmt.Errorf("authinfo %q exec env_file: %w", name, err)
 	}
 
-	credentialSource, err := resolveCredentialSource(in.Login)
-	if err != nil {
-		return nil, fmt.Errorf("authinfo %q login env_file: %w", name, err)
-	}
-
 	rai := &RuntimeAuthInfo{
 		Name: name,
 		AuthInfo: &api.AuthInfo{
@@ -643,7 +638,6 @@ func (c *AuthInfoCompiler) Compile(name string, in *AuthInfo) (*RuntimeAuthInfo,
 			Exec:                 execConfig,
 			Extensions:           in.Extensions,
 		},
-		CredentialSource: credentialSource,
 	}
 
 	if in.EncryptedToken != "" {

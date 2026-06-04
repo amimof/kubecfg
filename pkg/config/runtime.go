@@ -32,6 +32,8 @@ type RuntimeKubeconfig struct {
 	Protected bool
 	Aliases   []string
 
+	LoginSources map[string]*RuntimeLoginSource
+
 	Clusters  map[string]*RuntimeCluster
 	AuthInfos map[string]*RuntimeAuthInfo
 	Contexts  map[string]*RuntimeContext
@@ -41,6 +43,23 @@ type RuntimeKubeconfig struct {
 	DefaultNamespace string
 
 	Config *api.Config
+}
+
+type RuntimeLoginSource struct {
+	Command string
+	Args    []string
+	Env     map[string]string
+
+	ImportedConfig *api.Config
+}
+
+type RuntimeImportRef struct {
+	LoginSourceName string
+	ContextName     string
+
+	// Optional explicit names.
+	ClusterName  string
+	AuthInfoName string
 }
 
 func (rc *RuntimeConfig) Workspace(name string) *RuntimeWorkspace {
@@ -133,6 +152,8 @@ type RuntimeContext struct {
 	AuthInfo *RuntimeAuthInfo
 
 	Namespace string
+
+	Import *RuntimeImportRef
 
 	Context *api.Context
 }
