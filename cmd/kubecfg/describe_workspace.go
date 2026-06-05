@@ -13,28 +13,24 @@ import (
 var describeWorkspaceStdout io.Writer = os.Stdout
 
 func newDescribeWorkspaceCmd() *cobra.Command {
-	var identityFile string
-
 	cmd := &cobra.Command{
 		Use:   "workspace [WORKSPACE]",
 		Short: "Show workspace details",
 		Long:  `Show a workspace and its kubeconfigs in a readable format.`,
 		Example: `  kubecfg describe workspace homelab
-  kubecfg describe workspace homelab --identity-file ~/.config/kubecfg/age.txt`,
+	  kubecfg describe workspace homelab`,
 		Args:         cobra.MinimumNArgs(0),
 		SilenceUsage: true,
 		RunE: withConfig(func(cmd *cobra.Command, args []string) error {
-			return runDescribeWorkspaceCmd(args, identityFile, describeWorkspaceStdout)
+			return runDescribeWorkspaceCmd(args, describeWorkspaceStdout)
 		}),
 	}
-
-	cmd.PersistentFlags().StringVar(&identityFile, "identity-file", "", "Age identity used to decrypt fields in configuration")
 
 	return cmd
 }
 
-func runDescribeWorkspaceCmd(args []string, identityFile string, stdout io.Writer) error {
-	compiler, err := newCompilerWithOptionalDecryptor(&cfg, identityFile)
+func runDescribeWorkspaceCmd(args []string, stdout io.Writer) error {
+	compiler, err := newCompilerWithOptionalDecryptor(&cfg, cfg.IdentityFiles)
 	if err != nil {
 		return err
 	}

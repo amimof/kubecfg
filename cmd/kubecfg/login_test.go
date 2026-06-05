@@ -31,7 +31,7 @@ func TestRunLoginCmdImportsReferencedContext(t *testing.T) {
 	loginStdout = &stdout
 	loginStderr = &stderr
 
-	err := runLoginCmd("work", "vgr", "ctx1", "")
+	err := runLoginCmd("work", "vgr", "ctx1")
 	require.NoError(t, err)
 	require.Greater(t, stdout.Len(), 64*1024)
 	require.Greater(t, stderr.Len(), 64*1024)
@@ -71,7 +71,7 @@ func TestRunLoginCmdDoesNotMutateLoginSourceEnv(t *testing.T) {
 	require.NotNil(t, source)
 	require.NotContains(t, source.Env, "KUBECONFIG")
 
-	err = runLoginCmd("work", "vgr", "ctx1", "")
+	err = runLoginCmd("work", "vgr", "ctx1")
 	require.NoError(t, err)
 	require.NotContains(t, source.Env, "KUBECONFIG")
 }
@@ -93,7 +93,7 @@ func TestRunLoginCmdReturnsHelpfulErrorWhenCommandCannotStart(t *testing.T) {
 	loginStdout = &bytes.Buffer{}
 	loginStderr = &bytes.Buffer{}
 
-	err := runLoginCmd("work", "vgr", "ctx1", "")
+	err := runLoginCmd("work", "vgr", "ctx1")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "login source \"shared\": run command")
 	require.Contains(t, err.Error(), "missing-login-binary")
@@ -116,7 +116,7 @@ func TestRunLoginCmdReturnsHelpfulErrorWhenGeneratedKubeconfigIsInvalid(t *testi
 	loginStdout = &bytes.Buffer{}
 	loginStderr = &bytes.Buffer{}
 
-	err := runLoginCmd("work", "vgr", "ctx1", "")
+	err := runLoginCmd("work", "vgr", "ctx1")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "login source \"shared\": load generated kubeconfig")
 	require.Contains(t, err.Error(), "cannot unmarshal string")

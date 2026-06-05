@@ -18,7 +18,7 @@ func TestRunDescribeWorkspaceCmdRendersDefaultKubeconfig(t *testing.T) {
 	cfg = newDescribeWorkspaceTestConfig()
 
 	var stdout bytes.Buffer
-	err := runDescribeWorkspaceCmd([]string{"work"}, "", &stdout)
+	err := runDescribeWorkspaceCmd([]string{"work"}, &stdout)
 	require.NoError(t, err)
 
 	output := stdout.String()
@@ -70,7 +70,7 @@ func TestRunDescribeWorkspaceCmdRendersEmptyDefaultKubeconfigWhenUnset(t *testin
 	cfg.Workspaces["work"].DefaultKubeconfig = ""
 
 	var stdout bytes.Buffer
-	err := runDescribeWorkspaceCmd([]string{"work"}, "", &stdout)
+	err := runDescribeWorkspaceCmd([]string{"work"}, &stdout)
 	require.NoError(t, err)
 
 	for _, line := range strings.Split(stdout.String(), "\n") {

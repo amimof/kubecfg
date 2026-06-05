@@ -62,8 +62,8 @@ kubecfg render tanzu
 If your config contains encrypted auth fields elsewhere in the kubeconfig definition, provide the age identity used to decrypt them during compile:
 
 ```bash
-kubecfg login tanzu supervisor-prod --identity-file ~/.config/kubecfg/age.txt
-kubecfg render tanzu --identity-file ~/.config/kubecfg/age.txt
+kubecfg login tanzu supervisor-prod
+kubecfg render tanzu
 ```
 
 `kubecfg render` runs configured login sources by default before writing the final kubeconfig. Use `--skip-login` only when you intentionally want to reuse previously imported credentials.

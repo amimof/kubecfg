@@ -10,6 +10,7 @@ type Config struct {
 	Workspaces       map[string]*Workspace  `mapstructure:"workspaces,omitempty" json:"workspaces,omitempty" yaml:"workspaces,omitempty"`
 	Kubeconfigs      map[string]*Kubeconfig `mapstructure:"kubeconfigs,omitempty" json:"kubeconfigs,omitempty" yaml:"kubeconfigs,omitempty"`
 	BaseDir          string                 `mapstructure:"base_dir,omitempty" json:"base_dir,omitempty" yaml:"base_dir,omitempty"`
+	IdentityFiles    []string               `mapstructure:"identity_files,omitempty" json:"identity_files,omitempty" yaml:"identity_files,omitempty"`
 }
 
 type Workspace struct {

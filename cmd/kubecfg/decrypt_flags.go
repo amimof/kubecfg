@@ -9,7 +9,7 @@ import (
 	"github.com/amimof/kubecfg/pkg/decrypt"
 )
 
-func newCompilerWithOptionalDecryptor(cfg *config.Config, identityFile string) (*config.Compiler, error) {
+func newCompilerWithOptionalDecryptor(cfg *config.Config, identityFile []string) (*config.Compiler, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config is nil")
 	}
@@ -27,23 +27,28 @@ func newCompilerWithOptionalDecryptor(cfg *config.Config, identityFile string) (
 	return config.NewCompiler(compilerOpts...), nil
 }
 
-func loadAgeDecryptor(identityFile string) (*decrypt.AgeDecryptor, error) {
-	if identityFile != "" {
-		f, err := os.Open(identityFile)
-		if err != nil {
-			return nil, err
-		}
-		defer func() {
-			if err := f.Close(); err != nil {
-				panic(err)
+func loadAgeDecryptor(identityFiles []string) (*decrypt.AgeDecryptor, error) {
+	if len(identityFiles) > 0 {
+
+		var identities []age.Identity
+		for _, identityFile := range identityFiles {
+
+			f, err := os.Open(config.ResolvePath("", identityFile))
+			if err != nil {
+				return nil, err
 			}
-		}()
+			defer func() {
+				if err := f.Close(); err != nil {
+					panic(err)
+				}
+			}()
 
-		identities, err := age.ParseIdentities(f)
-		if err != nil {
-			return nil, err
+			parsedIdentities, err := age.ParseIdentities(f)
+			if err != nil {
+				return nil, err
+			}
+			identities = append(identities, parsedIdentities...)
 		}
-
 		return decrypt.NewAgeDecryptor(identities...)
 	}
 
