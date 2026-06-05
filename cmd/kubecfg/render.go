@@ -29,7 +29,6 @@ func newRenderCmd() *cobra.Command {
 	var (
 		workspaceName string
 		skipLogin     bool
-		identityFile  string
 		waitTimeout   time.Duration
 	)
 
@@ -43,14 +42,13 @@ func newRenderCmd() *cobra.Command {
 		SilenceUsage: true,
 		RunE: withConfig(func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return runRenderCmdFzf(cmd.Context(), workspaceName, skipLogin, identityFile, waitTimeout)
+				return runRenderCmdFzf(cmd.Context(), workspaceName, skipLogin, waitTimeout)
 			}
-			return runRenderCmd(cmd.Context(), workspaceName, args[0], skipLogin, identityFile, waitTimeout)
+			return runRenderCmd(cmd.Context(), workspaceName, args[0], skipLogin, waitTimeout)
 		}),
 	}
 
 	cmd.PersistentFlags().StringVarP(&workspaceName, "workspace", "w", "", "Workspace")
-	cmd.PersistentFlags().StringVar(&identityFile, "identity-file", "", "Age identity used to decrypt fields in configuration")
 	cmd.PersistentFlags().BoolVar(&skipLogin, "skip-login", false, "Skip execution of login flow prior to kubeconfig rendering")
 	cmd.PersistentFlags().DurationVar(&waitTimeout, "timeout", time.Second*30, "How long in seconds to wait for login opearation to finish before giving up")
 
@@ -82,8 +80,8 @@ func setConfig(baseDir, name string) error {
 	return os.Symlink(name, path.Join(baseDir, "config"))
 }
 
-func runRenderCmd(ctx context.Context, workspaceName, kubeconfigName string, skipLogin bool, identityFile string, waitTimeout time.Duration) error {
-	compiler, err := newCompilerWithOptionalDecryptor(&cfg, identityFile)
+func runRenderCmd(ctx context.Context, workspaceName, kubeconfigName string, skipLogin bool, waitTimeout time.Duration) error {
+	compiler, err := newCompilerWithOptionalDecryptor(&cfg, cfg.IdentityFiles)
 	if err != nil {
 		return err
 	}
@@ -143,8 +141,8 @@ func runRenderCmd(ctx context.Context, workspaceName, kubeconfigName string, ski
 	return nil
 }
 
-func runRenderCmdFzf(ctx context.Context, workspaceName string, skipLogin bool, identityFile string, waitTimeout time.Duration) error {
-	compiler, err := newCompilerWithOptionalDecryptor(&cfg, identityFile)
+func runRenderCmdFzf(ctx context.Context, workspaceName string, skipLogin bool, waitTimeout time.Duration) error {
+	compiler, err := newCompilerWithOptionalDecryptor(&cfg, cfg.IdentityFiles)
 	if err != nil {
 		return err
 	}

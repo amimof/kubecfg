@@ -39,7 +39,7 @@ func (c *Compiler) Compile(cfg *Config) (*RuntimeConfig, error) {
 
 	rt := &RuntimeConfig{
 		Version:           cfg.Version,
-		BaseDir:           resolvePath("", cfg.BaseDir),
+		BaseDir:           ResolvePath("", cfg.BaseDir),
 		Workspaces:        make(map[string]*RuntimeWorkspace),
 		Kubeconfigs:       make(map[string]*RuntimeKubeconfig),
 		KubeconfigAliases: make(map[string]*RuntimeKubeconfig),
@@ -78,7 +78,7 @@ func (c *Compiler) compileKubeconfigs(rt *RuntimeConfig, cfg *Config) error {
 
 		rkc := &RuntimeKubeconfig{
 			Name:             kubeconfigName,
-			Path:             resolvePath(rt.BaseDir, kubeconfig.Path),
+			Path:             ResolvePath(rt.BaseDir, kubeconfig.Path),
 			Protected:        kubeconfig.Protected,
 			Aliases:          append([]string(nil), kubeconfig.Aliases...),
 			DefaultNamespace: strings.TrimSpace(kubeconfig.DefaultNamespace),
@@ -629,7 +629,7 @@ func resolveKubeconfigDefaultContext(rkc *RuntimeKubeconfig, value string) error
 	return nil
 }
 
-func resolvePath(base, path string) string {
+func ResolvePath(base, path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return ""
@@ -681,7 +681,7 @@ func (c *AuthInfoCompiler) Compile(name string, in *AuthInfo) (*RuntimeAuthInfo,
 	}
 
 	if in.HasEncryptedFields() && c.Decryptor == nil {
-		return nil, fmt.Errorf("authinfo %q contains encrypted fields; provide --identity-file or a passphrase", name)
+		return nil, fmt.Errorf("authinfo %q contains encrypted fields; configure identity_files or provide a passphrase", name)
 	}
 
 	execConfig, err := resolveAuthInfosExec(in.Exec)

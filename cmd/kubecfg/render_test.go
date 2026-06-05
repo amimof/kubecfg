@@ -124,7 +124,7 @@ func TestRunRenderCmdFzfNoSelectionIsNoOp(t *testing.T) {
 		return fzf.ExitNoMatch, nil
 	}
 
-	err := runRenderCmdFzf(context.Background(), "", false, "", time.Second)
+	err := runRenderCmdFzf(context.Background(), "", false, time.Second)
 	require.NoError(t, err)
 
 	_, err = os.Stat(targetPath)
@@ -153,7 +153,7 @@ func TestRunRenderCmdFzfUpdatesActiveConfigSymlink(t *testing.T) {
 		return fzf.ExitOk, nil
 	}
 
-	err := runRenderCmdFzf(context.Background(), "", false, "", time.Second)
+	err := runRenderCmdFzf(context.Background(), "", false, time.Second)
 	require.NoError(t, err)
 
 	linkPath := filepath.Join(tmpDir, "config")
@@ -164,7 +164,7 @@ func TestRunRenderCmdFzfUpdatesActiveConfigSymlink(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestRunRenderCmdDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
+func TestRunRenderCmdDecryptsEncryptedTokenWithConfiguredIdentityFiles(t *testing.T) {
 	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
 	identityFile, encryptedToken := writeAgeIdentityAndEncryptedToken(t, "command-token")
 
@@ -174,8 +174,9 @@ func TestRunRenderCmdDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
 	})
 
 	cfg = newEncryptedRenderCommandTestConfig(targetPath, encryptedToken)
+	cfg.IdentityFiles = []string{identityFile}
 
-	err := runRenderCmd(context.Background(), "work", "vgr", true, identityFile, time.Second)
+	err := runRenderCmd(context.Background(), "work", "vgr", true, time.Second)
 	require.NoError(t, err)
 
 	contents, err := os.ReadFile(targetPath)
@@ -184,7 +185,7 @@ func TestRunRenderCmdDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
 	require.NotContains(t, string(contents), encryptedToken)
 }
 
-func TestRunRenderCmdFzfDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
+func TestRunRenderCmdFzfDecryptsEncryptedTokenWithConfiguredIdentityFiles(t *testing.T) {
 	t.Setenv("FZF_DEFAULT_OPTS", "")
 	t.Setenv("FZF_DEFAULT_OPTS_FILE", "")
 
@@ -200,6 +201,7 @@ func TestRunRenderCmdFzfDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
 	})
 
 	cfg = newEncryptedRenderCommandTestConfig(targetPath, encryptedToken)
+	cfg.IdentityFiles = []string{identityFile}
 	fzfRun = func(options *fzf.Options) (int, error) {
 		for range options.Input {
 		}
@@ -207,7 +209,7 @@ func TestRunRenderCmdFzfDecryptsEncryptedTokenWithIdentityFile(t *testing.T) {
 		return fzf.ExitOk, nil
 	}
 
-	err := runRenderCmdFzf(context.Background(), "", true, identityFile, time.Second)
+	err := runRenderCmdFzf(context.Background(), "", true, time.Second)
 	require.NoError(t, err)
 
 	contents, err := os.ReadFile(targetPath)
@@ -231,7 +233,7 @@ func TestRunRenderCmdImportsReferencedContext(t *testing.T) {
 	loginStdout = &bytes.Buffer{}
 	loginStderr = &bytes.Buffer{}
 
-	err := runRenderCmd(context.Background(), "work", "vgr", false, "", time.Second)
+	err := runRenderCmd(context.Background(), "work", "vgr", false, time.Second)
 	require.NoError(t, err)
 
 	loaded, err := clientcmd.LoadFromFile(targetPath)
@@ -260,7 +262,7 @@ func TestRunRenderCmdImportsImplicitClusterAndAuthInfo(t *testing.T) {
 	loginStdout = &bytes.Buffer{}
 	loginStderr = &bytes.Buffer{}
 
-	err := runRenderCmd(context.Background(), "work", "vgr", false, "", time.Second)
+	err := runRenderCmd(context.Background(), "work", "vgr", false, time.Second)
 	require.NoError(t, err)
 
 	loaded, err := clientcmd.LoadFromFile(targetPath)
@@ -286,7 +288,7 @@ func TestRunRenderCmdFailsWhenImportedContextIsMissing(t *testing.T) {
 	loginStdout = &bytes.Buffer{}
 	loginStderr = &bytes.Buffer{}
 
-	err := runRenderCmd(context.Background(), "work", "vgr", false, "", time.Second)
+	err := runRenderCmd(context.Background(), "work", "vgr", false, time.Second)
 	require.EqualError(t, err, "kubeconfig \"vgr\" context \"ctx1\" imports missing context \"missing\" from login source \"shared\"")
 }
 
@@ -307,7 +309,7 @@ func TestRunRenderCmdReturnsHelpfulErrorWhenLoginCommandCannotStart(t *testing.T
 	loginStdout = &bytes.Buffer{}
 	loginStderr = &bytes.Buffer{}
 
-	err := runRenderCmd(context.Background(), "work", "vgr", false, "", time.Second)
+	err := runRenderCmd(context.Background(), "work", "vgr", false, time.Second)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "login source \"shared\": run command")
 	require.Contains(t, err.Error(), "missing-login-binary")
@@ -330,7 +332,7 @@ func TestRunRenderCmdReturnsHelpfulErrorWhenGeneratedKubeconfigIsInvalid(t *test
 	loginStdout = &bytes.Buffer{}
 	loginStderr = &bytes.Buffer{}
 
-	err := runRenderCmd(context.Background(), "work", "vgr", false, "", time.Second)
+	err := runRenderCmd(context.Background(), "work", "vgr", false, time.Second)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "login source \"shared\": load generated kubeconfig")
 	require.Contains(t, err.Error(), "cannot unmarshal string")

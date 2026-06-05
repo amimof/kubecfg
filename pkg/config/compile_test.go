@@ -23,7 +23,7 @@ func TestCompileFailsWhenEncryptedFieldsExistWithoutDecryptor(t *testing.T) {
 	}
 
 	_, err := NewCompiler().Compile(&cfg)
-	require.EqualError(t, err, "authinfo \"user\" contains encrypted fields; provide --identity-file or a passphrase")
+	require.EqualError(t, err, "authinfo \"user\" contains encrypted fields; configure identity_files or provide a passphrase")
 }
 
 func TestCompileEncryptedTokenOverridesPlaintextToken(t *testing.T) {

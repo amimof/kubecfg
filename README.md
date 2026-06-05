@@ -109,7 +109,7 @@ This lets you manage `kubecfg.yaml` like a dotfile. Version it, sync it across m
 
 `kubecfg render mainframe --workspace homelab` same as previous command
 
-`kubecfg render mainframe --identity-file ~/.config/kubecfg/age.txt` decrypts `encryptedToken` and other encrypted auth fields during compile.
+`kubecfg render mainframe` decrypts `encryptedToken` and other encrypted auth fields during compile when `identity_files` is configured.
 
 ## Login Sources And Imports
 
@@ -142,6 +142,14 @@ If `import_ref.cluster` or `import_ref.auth_info` is omitted, kubecfg defaults t
 
 Use `kubecfg encrypt` to generate an armored age string and paste it into a encrypted auth field.
 
+Generate an age key pair first. This command writes an identity file containing the private key. It also prints the corresponding public key to stdout:
+
+```bash
+age-keygen -o ~/age.txt
+```
+
+Use the public key when encrypting values:
+
 ```bash
 kubecfg encrypt --public-key age1...
 ```
@@ -165,8 +173,15 @@ kubeconfigs:
 Render that kubeconfig with either an age identity file or a passphrase-backed age secret:
 
 ```bash
-kubecfg render mainframe --identity-file ~/.config/kubecfg/age.txt
-kubecfg login mainframe admin --identity-file ~/.config/kubecfg/age.txt
+kubecfg render mainframe
+kubecfg login mainframe admin
+```
+
+Add age identity files to your config to enable non-interactive decryption:
+
+```yaml
+identity_files:
+  - ~/.config/kubecfg/age.txt
 ```
 
 If both `token` and `encryptedToken` are set, `encryptedToken` wins.
@@ -185,10 +200,10 @@ To inspect a single workspace, pass the workspace name:
 kubecfg describe workspace homelab
 ```
 
-If a workspace contains kubeconfigs with encrypted fields, provide an identity file when describing it:
+If a workspace contains kubeconfigs with encrypted fields, configure `identity_files` first if you do not want to enter a passphrase interactively:
 
 ```bash
-kubecfg describe workspace homelab --identity-file ~/.config/kubecfg/age.txt
+kubecfg describe workspace homelab
 ```
 
 ## Selecting Kubeconfigs
@@ -291,9 +306,8 @@ kubeconfigs:
         # Pick one primary auth mechanism for this auth info.
         token: "<redacted>"
 
-        # Encrypted variants are decrypted during Compile() when you run
-        # `kubecfg render` or `kubecfg login` with `--identity-file` or a
-        # passphrase on stdin.
+        # Encrypted variants are decrypted during Compile() when
+        # `identity_files` is configured or a passphrase is provided on stdin.
         # encryptedToken: |
         #   -----BEGIN AGE ENCRYPTED FILE-----
         #   ...
