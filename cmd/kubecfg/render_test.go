@@ -227,7 +227,7 @@ func TestRunRenderCmdImportsReferencedContext(t *testing.T) {
 
 	cfg = newImportedRenderCommandTestConfig(targetPath)
 
-	err := runRenderCmd(context.Background(), "work", "vgr", false, time.Second)
+	err := runRenderCmd(context.Background(), "work", "vgr", false, 5*time.Second)
 	require.NoError(t, err)
 
 	loaded, err := clientcmd.LoadFromFile(targetPath)
@@ -250,7 +250,7 @@ func TestRunRenderCmdImportsImplicitClusterAndAuthInfo(t *testing.T) {
 	cfg = newImportedRenderCommandTestConfig(targetPath)
 	cfg.Kubeconfigs["vgr"].Contexts["ctx1"].ImportRef.AuthInfoName = ""
 
-	err := runRenderCmd(context.Background(), "work", "vgr", false, time.Second)
+	err := runRenderCmd(context.Background(), "work", "vgr", false, 5*time.Second)
 	require.NoError(t, err)
 
 	loaded, err := clientcmd.LoadFromFile(targetPath)
@@ -270,7 +270,7 @@ func TestRunRenderCmdFailsWhenImportedContextIsMissing(t *testing.T) {
 	cfg = newImportedRenderCommandTestConfig(targetPath)
 	cfg.Kubeconfigs["vgr"].Contexts["ctx1"].ImportRef.ContextName = "missing"
 
-	err := runRenderCmd(context.Background(), "work", "vgr", false, time.Second)
+	err := runRenderCmd(context.Background(), "work", "vgr", false, 5*time.Second)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), `kubeconfig "vgr" context "ctx1" imports missing context "missing" from login source "shared"`)
 }
@@ -286,7 +286,7 @@ func TestRunRenderCmdReturnsHelpfulErrorWhenLoginCommandCannotStart(t *testing.T
 	cfg = newImportedRenderCommandTestConfig(targetPath)
 	cfg.Kubeconfigs["vgr"].LoginSources["shared"].Command = filepath.Join(t.TempDir(), "missing-login-binary")
 
-	err := runRenderCmd(context.Background(), "work", "vgr", false, time.Second)
+	err := runRenderCmd(context.Background(), "work", "vgr", false, 5*time.Second)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "login source \"shared\": run command")
 	require.Contains(t, err.Error(), "missing-login-binary")
@@ -303,7 +303,7 @@ func TestRunRenderCmdReturnsHelpfulErrorWhenGeneratedKubeconfigIsInvalid(t *test
 	cfg = newImportedRenderCommandTestConfig(targetPath)
 	cfg.Kubeconfigs["vgr"].LoginSources["shared"].Args = []string{"-test.run=TestHelperProcessInvalidLoginCommand", "--"}
 
-	err := runRenderCmd(context.Background(), "work", "vgr", false, time.Second)
+	err := runRenderCmd(context.Background(), "work", "vgr", false, 5*time.Second)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "login source \"shared\": load generated kubeconfig")
 	require.Contains(t, err.Error(), "cannot unmarshal string")

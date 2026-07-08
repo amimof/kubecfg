@@ -354,22 +354,6 @@ func runLogin(ctx context.Context, source *config.RuntimeLoginSource, waitTimeou
 	return nil
 }
 
-func compactLoginErrorDetail(stderr string) string {
-	stderr = strings.TrimSpace(stderr)
-	if stderr == "" {
-		return ""
-	}
-
-	lines := strings.FieldsFunc(stderr, func(r rune) bool {
-		return r == '\n' || r == '\r'
-	})
-	if len(lines) == 0 {
-		return ""
-	}
-
-	return strings.TrimSpace(lines[len(lines)-1])
-}
-
 func pickContext(rc *config.RuntimeConfig) (string, string, error) {
 	inputChan := make(chan string)
 	go func() {
@@ -388,14 +372,12 @@ func pickContext(rc *config.RuntimeConfig) (string, string, error) {
 		return "", "", err
 	}
 
-	var workspaceName string
 	ss := strings.Split(selected, "/")
 	if len(ss) == 2 {
-		workspaceName = ss[0]
 		return ss[0], ss[1], nil
 	}
 
-	return workspaceName, selected, nil
+	return "", selected, nil
 }
 
 func pick(input chan string) (string, error) {
