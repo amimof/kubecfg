@@ -4,23 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
-	"github.com/amimof/kubecfg/pkg/command"
-	"github.com/amimof/kubecfg/pkg/service"
 	"github.com/spf13/cobra"
 )
 
-var (
-	loginStdout *bytes.Buffer = &bytes.Buffer{}
-	loginStderr *bytes.Buffer = &bytes.Buffer{}
-)
-
 func newLoginCmd() *cobra.Command {
-	var (
-		workspaceName string
-	)
+	var workspaceName string
 	cmd := &cobra.Command{
 		Use:   "login [KUBECONFIG] [CONTEXT]",
 		Short: "Refresh credentials for a context",
@@ -67,20 +57,17 @@ func runLoginCmd(workspaceName, kubeconfigName, contextName string) error {
 	// Find the credential source using workspace and kubeconfig name
 	rk := runtime.Workspace(workspaceName).Kubeconfig(kubeconfigName)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	runner := command.NewExecCommandRunner()
-	loginService := service.LoginService{Runner: runner, Stdout: loginStdout, Stderr: loginStderr}
-	err = loginService.Login(ctx, rk)
-	if err != nil {
-		detail := compactLoginErrorDetail(loginStderr.String())
-		if detail != "" && !strings.Contains(err.Error(), detail) {
-			return fmt.Errorf("%w: %s", err, detail)
+	// Run login sources
+	for _, source := range rk.LoginSources {
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		err := runLogin(ctx, source, 30*time.Second, stdout, stderr)
+		cancel()
+		if err != nil {
+			return err
 		}
-		return err
 	}
-
 	if err := applyImportedContexts(rk); err != nil {
 		return err
 	}

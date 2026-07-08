@@ -85,6 +85,12 @@ func WithFields(fields ...Field) Option {
 	}
 }
 
+func WithLayout(l *Layout) Option {
+	return func(d *Dashboard) {
+		d.layout = l
+	}
+}
+
 // ServiceState represents One line in the dashboard
 type ServiceState struct {
 	Done      bool
@@ -105,6 +111,7 @@ type Dashboard struct {
 	emptyText string
 	fields    []Field // detail fields to display per task; nil means all fields
 	app       *App
+	layout    *Layout
 }
 
 // Column defines a single column in the dashboard output
@@ -271,13 +278,20 @@ func NewDashboard(names []string, opts ...Option) (*Dashboard, error) {
 		app:       app,
 	}
 
-	for _, opt := range opts {
-		opt(d)
-	}
-
 	width, height, err := dashboardDimensions(d.app.Writer)
 	if err != nil {
 		return nil, err
+	}
+
+	// Set default layout
+	d.layout = &Layout{
+		Dimensions: [2]int{width, height},
+		Padding:    [4]int{0, 0, 0, 0},
+	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(d)
 	}
 
 	// Resolve effective field set: nil means "all fields" (default behaviour).
@@ -305,7 +319,7 @@ func NewDashboard(names []string, opts ...Option) (*Dashboard, error) {
 
 		// Status line is always present.
 		elements := []*Element{
-			NewElement(`{{ if .Container.Failed }}{{"✖" | FgRed }} {{ .Container.FailedMsg | FgRed }}{{else if .Container.Done }}{{ "✔" | FgGreen }} {{ .Container.DoneMsg | FgGreen }}{{else}}{{ spinner | FgYellow }} {{ .Prefix }} {{ .Container.Name | Bold }}{{end}}`),
+			NewElement(`{{ if .Container.Failed }}[ {{"✖" | FgRed }} ] {{ .Container.FailedMsg | FgRed }}{{else if .Container.Done }}[ {{ "✔" | FgGreen }} ] {{ .Container.DoneMsg | FgGreen }}{{else}}[ {{ spinner | FgYellow }} ]{{ if .Prefix }}{{ .Prefix }}{{end}} {{ .Container.Name | Bold }}{{end}}`),
 		}
 
 		// Append one element per active field, in defaultFields order.
@@ -316,11 +330,8 @@ func NewDashboard(names []string, opts ...Option) (*Dashboard, error) {
 		}
 
 		svc := &ServiceState{
-			config: &config.Config{Version: "v1"},
-			container: NewContainer(data, elements...).WithLayout(Layout{
-				Dimensions: [2]int{width, height},
-				Padding:    [4]int{0, 0, 0, 0},
-			}).WithStyle(Style{
+			config:    &config.Config{Version: "v1"},
+			container: NewContainer(data, elements...).WithLayout(*d.layout).WithStyle(Style{
 				// Bg: StyleBg256(234),
 			}),
 		}

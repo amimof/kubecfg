@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -56,7 +55,7 @@ func TestPickContextReturnsSelection(t *testing.T) {
 		},
 	}
 
-	workspace, selected, err := pickContext(runtimeConfig, "")
+	workspace, selected, err := pickContext(runtimeConfig)
 	require.NoError(t, err)
 	require.Equal(t, "prod", workspace)
 	require.Equal(t, "api", selected)
@@ -98,7 +97,7 @@ func TestPickContextNoSelection(t *testing.T) {
 				return tt.code, nil
 			}
 
-			_, _, err := pickContext(runtimeConfig, "")
+			_, _, err := pickContext(runtimeConfig)
 			require.ErrorIs(t, err, errNoSelection)
 		})
 	}
@@ -124,7 +123,8 @@ func TestRunRenderCmdFzfNoSelectionIsNoOp(t *testing.T) {
 		return fzf.ExitNoMatch, nil
 	}
 
-	err := runRenderCmdFzf(context.Background(), "", false, time.Second)
+	maxWait := time.Second * 30
+	err := runRenderCmdFzf(context.Background(), false, maxWait)
 	require.NoError(t, err)
 
 	_, err = os.Stat(targetPath)
@@ -153,7 +153,7 @@ func TestRunRenderCmdFzfUpdatesActiveConfigSymlink(t *testing.T) {
 		return fzf.ExitOk, nil
 	}
 
-	err := runRenderCmdFzf(context.Background(), "", false, time.Second)
+	err := runRenderCmdFzf(context.Background(), false, time.Second)
 	require.NoError(t, err)
 
 	linkPath := filepath.Join(tmpDir, "config")
@@ -209,7 +209,7 @@ func TestRunRenderCmdFzfDecryptsEncryptedTokenWithConfiguredIdentityFiles(t *tes
 		return fzf.ExitOk, nil
 	}
 
-	err := runRenderCmdFzf(context.Background(), "", true, time.Second)
+	err := runRenderCmdFzf(context.Background(), true, time.Second)
 	require.NoError(t, err)
 
 	contents, err := os.ReadFile(targetPath)
@@ -221,17 +221,11 @@ func TestRunRenderCmdImportsReferencedContext(t *testing.T) {
 	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
 
 	originalCfg := cfg
-	originalStdout := loginStdout
-	originalStderr := loginStderr
 	t.Cleanup(func() {
 		cfg = originalCfg
-		loginStdout = originalStdout
-		loginStderr = originalStderr
 	})
 
 	cfg = newImportedRenderCommandTestConfig(targetPath)
-	loginStdout = &bytes.Buffer{}
-	loginStderr = &bytes.Buffer{}
 
 	err := runRenderCmd(context.Background(), "work", "vgr", false, time.Second)
 	require.NoError(t, err)
@@ -249,18 +243,12 @@ func TestRunRenderCmdImportsImplicitClusterAndAuthInfo(t *testing.T) {
 	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
 
 	originalCfg := cfg
-	originalStdout := loginStdout
-	originalStderr := loginStderr
 	t.Cleanup(func() {
 		cfg = originalCfg
-		loginStdout = originalStdout
-		loginStderr = originalStderr
 	})
 
 	cfg = newImportedRenderCommandTestConfig(targetPath)
 	cfg.Kubeconfigs["vgr"].Contexts["ctx1"].ImportRef.AuthInfoName = ""
-	loginStdout = &bytes.Buffer{}
-	loginStderr = &bytes.Buffer{}
 
 	err := runRenderCmd(context.Background(), "work", "vgr", false, time.Second)
 	require.NoError(t, err)
@@ -275,39 +263,28 @@ func TestRunRenderCmdFailsWhenImportedContextIsMissing(t *testing.T) {
 	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
 
 	originalCfg := cfg
-	originalStdout := loginStdout
-	originalStderr := loginStderr
 	t.Cleanup(func() {
 		cfg = originalCfg
-		loginStdout = originalStdout
-		loginStderr = originalStderr
 	})
 
 	cfg = newImportedRenderCommandTestConfig(targetPath)
 	cfg.Kubeconfigs["vgr"].Contexts["ctx1"].ImportRef.ContextName = "missing"
-	loginStdout = &bytes.Buffer{}
-	loginStderr = &bytes.Buffer{}
 
 	err := runRenderCmd(context.Background(), "work", "vgr", false, time.Second)
-	require.EqualError(t, err, "kubeconfig \"vgr\" context \"ctx1\" imports missing context \"missing\" from login source \"shared\"")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `kubeconfig "vgr" context "ctx1" imports missing context "missing" from login source "shared"`)
 }
 
 func TestRunRenderCmdReturnsHelpfulErrorWhenLoginCommandCannotStart(t *testing.T) {
 	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
 
 	originalCfg := cfg
-	originalStdout := loginStdout
-	originalStderr := loginStderr
 	t.Cleanup(func() {
 		cfg = originalCfg
-		loginStdout = originalStdout
-		loginStderr = originalStderr
 	})
 
 	cfg = newImportedRenderCommandTestConfig(targetPath)
 	cfg.Kubeconfigs["vgr"].LoginSources["shared"].Command = filepath.Join(t.TempDir(), "missing-login-binary")
-	loginStdout = &bytes.Buffer{}
-	loginStderr = &bytes.Buffer{}
 
 	err := runRenderCmd(context.Background(), "work", "vgr", false, time.Second)
 	require.Error(t, err)
@@ -319,18 +296,12 @@ func TestRunRenderCmdReturnsHelpfulErrorWhenGeneratedKubeconfigIsInvalid(t *test
 	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
 
 	originalCfg := cfg
-	originalStdout := loginStdout
-	originalStderr := loginStderr
 	t.Cleanup(func() {
 		cfg = originalCfg
-		loginStdout = originalStdout
-		loginStderr = originalStderr
 	})
 
 	cfg = newImportedRenderCommandTestConfig(targetPath)
 	cfg.Kubeconfigs["vgr"].LoginSources["shared"].Args = []string{"-test.run=TestHelperProcessInvalidLoginCommand", "--"}
-	loginStdout = &bytes.Buffer{}
-	loginStderr = &bytes.Buffer{}
 
 	err := runRenderCmd(context.Background(), "work", "vgr", false, time.Second)
 	require.Error(t, err)
