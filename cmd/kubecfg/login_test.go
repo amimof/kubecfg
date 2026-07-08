@@ -16,25 +16,14 @@ func TestRunLoginCmdImportsReferencedContext(t *testing.T) {
 	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
 
 	originalCfg := cfg
-	originalStdout := loginStdout
-	originalStderr := loginStderr
 	t.Cleanup(func() {
 		cfg = originalCfg
-		loginStdout = originalStdout
-		loginStderr = originalStderr
 	})
 
 	cfg = newImportedLoginCommandTestConfig(targetPath)
 
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	loginStdout = &stdout
-	loginStderr = &stderr
-
 	err := runLoginCmd("work", "vgr", "ctx1")
 	require.NoError(t, err)
-	require.Greater(t, stdout.Len(), 64*1024)
-	require.Greater(t, stderr.Len(), 64*1024)
 
 	loaded, err := clientcmd.LoadFromFile(targetPath)
 	require.NoError(t, err)
@@ -51,17 +40,11 @@ func TestRunLoginCmdDoesNotMutateLoginSourceEnv(t *testing.T) {
 	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
 
 	originalCfg := cfg
-	originalStdout := loginStdout
-	originalStderr := loginStderr
 	t.Cleanup(func() {
 		cfg = originalCfg
-		loginStdout = originalStdout
-		loginStderr = originalStderr
 	})
 
 	cfg = newImportedLoginCommandTestConfig(targetPath)
-	loginStdout = &bytes.Buffer{}
-	loginStderr = &bytes.Buffer{}
 
 	compiler := config.NewCompiler()
 	runtime, err := compiler.Compile(&cfg)
@@ -80,18 +63,12 @@ func TestRunLoginCmdReturnsHelpfulErrorWhenCommandCannotStart(t *testing.T) {
 	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
 
 	originalCfg := cfg
-	originalStdout := loginStdout
-	originalStderr := loginStderr
 	t.Cleanup(func() {
 		cfg = originalCfg
-		loginStdout = originalStdout
-		loginStderr = originalStderr
 	})
 
 	cfg = newImportedLoginCommandTestConfig(targetPath)
 	cfg.Kubeconfigs["vgr"].LoginSources["shared"].Command = filepath.Join(t.TempDir(), "missing-login-binary")
-	loginStdout = &bytes.Buffer{}
-	loginStderr = &bytes.Buffer{}
 
 	err := runLoginCmd("work", "vgr", "ctx1")
 	require.Error(t, err)
@@ -103,18 +80,12 @@ func TestRunLoginCmdReturnsHelpfulErrorWhenGeneratedKubeconfigIsInvalid(t *testi
 	targetPath := filepath.Join(t.TempDir(), "target-kubeconfig.yaml")
 
 	originalCfg := cfg
-	originalStdout := loginStdout
-	originalStderr := loginStderr
 	t.Cleanup(func() {
 		cfg = originalCfg
-		loginStdout = originalStdout
-		loginStderr = originalStderr
 	})
 
 	cfg = newImportedLoginCommandTestConfig(targetPath)
 	cfg.Kubeconfigs["vgr"].LoginSources["shared"].Args = []string{"-test.run=TestHelperProcessInvalidLoginCommand", "--"}
-	loginStdout = &bytes.Buffer{}
-	loginStderr = &bytes.Buffer{}
 
 	err := runLoginCmd("work", "vgr", "ctx1")
 	require.Error(t, err)

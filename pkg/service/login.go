@@ -22,18 +22,16 @@ type LoginService struct {
 	Stderr io.Writer
 }
 
-func (s *LoginService) Login(ctx context.Context, rkc *config.RuntimeKubeconfig) error {
-	if rkc == nil {
+func (s *LoginService) Login(ctx context.Context, source *config.RuntimeLoginSource) error {
+	if source == nil {
 		return fmt.Errorf("runtime kubeconfig is nil")
 	}
 
-	for _, source := range rkc.LoginSources {
-		imported, err := s.loginWithCommand(ctx, source)
-		if err != nil {
-			return fmt.Errorf("login source %q: %w", source.Name, err)
-		}
-		source.ImportedConfig = imported
+	imported, err := s.loginWithCommand(ctx, source)
+	if err != nil {
+		return fmt.Errorf("login source %q: %w", source.Name, err)
 	}
+	source.ImportedConfig = imported
 
 	return nil
 }
@@ -48,9 +46,9 @@ func (s *LoginService) loginWithCommand(ctx context.Context, source *config.Runt
 		if err := tmpFile.Close(); err != nil {
 			panic(err)
 		}
-		// if err := os.Remove(tmpFile.Name()); err != nil {
-		// 	panic(err)
-		// }
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			panic(err)
+		}
 	}()
 
 	// Add var so that login uses temporary kubeconfig file during login
